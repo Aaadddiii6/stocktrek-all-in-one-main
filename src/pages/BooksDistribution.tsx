@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ModuleActivityLogs } from "@/components/ModuleActivityLogs";
-import { AddRecordModal } from "@/components/AddRecordModal";
+import { AddBookRecordModal } from "@/components/AddBookRecordModal";
 import { BookOpen, Plus, TrendingUp, GraduationCap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh";
@@ -88,7 +88,6 @@ export default function BooksDistribution() {
   const fetchBooksData = async () => {
     try {
       setIsLoadingBooks(true);
-      console.log("🔍 Fetching books data...");
       const { data, error } = await supabase
         .from("books_distribution")
         .select("*")
@@ -96,8 +95,6 @@ export default function BooksDistribution() {
 
       if (error) throw error;
 
-      console.log("📚 Books data fetched:", data);
-      console.log("📚 Books data length:", data?.length);
       setBooksData(data || []);
     } catch (error) {
       console.error("Error fetching books data:", error);
@@ -106,16 +103,15 @@ export default function BooksDistribution() {
     }
   };
 
-  // useRealtimeRefresh({
-  //   table: "books_distribution",
-  //   onRefresh: () => {
-  //     fetchBooksStats();
-  //     fetchBooksData();
-  //   },
-  // });
+  useRealtimeRefresh({
+    table: "books_distribution",
+    onRefresh: () => {
+      fetchBooksStats();
+      fetchBooksData();
+    },
+  });
 
   useEffect(() => {
-    console.log("🔍 useEffect triggered - fetching books data...");
     fetchBooksStats();
     fetchBooksData();
   }, []);
@@ -194,12 +190,6 @@ export default function BooksDistribution() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {console.log(
-              "🔍 Current booksData:",
-              booksData,
-              "isLoading:",
-              isLoadingBooks
-            )}
             {isLoadingBooks ? (
               <div className="flex items-center justify-center py-8">
                 <div className="text-muted-foreground">
@@ -228,7 +218,7 @@ export default function BooksDistribution() {
                     </tr>
                   </thead>
                   <tbody>
-                    {booksData.map((book, index) => {
+                    {booksData.map((book: any, index: number) => {
                       const totalBooks =
                         (book.grade1 || 0) +
                         (book.grade2 || 0) +
@@ -282,7 +272,7 @@ export default function BooksDistribution() {
       </div>
 
       {/* Add Record Modal */}
-      <AddRecordModal
+      <AddBookRecordModal
         open={isAddModalOpen}
         onOpenChange={setIsAddModalOpen}
         onSuccess={() => {
@@ -290,7 +280,6 @@ export default function BooksDistribution() {
           fetchBooksStats();
           fetchBooksData();
         }}
-        defaultModuleType="books"
       />
     </>
   );

@@ -10,6 +10,7 @@ import NotFound from "./pages/NotFound";
 import AuthForm from "./components/AuthForm";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { useDynamicModules } from "./hooks/useDynamicModules";
+import BooksDistribution from "./pages/BooksDistribution";
 
 const queryClient = new QueryClient();
 
@@ -34,20 +35,22 @@ function AppContent() {
 
   return (
     <BrowserRouter>
-       <Routes>
-    <Route path="/" element={<DynamicLayout />}>
-      <Route index element={<DynamicDashboard />} />
-      {/* Dynamic routes for all modules */}
-      {modules.map((module) => (
-        <Route 
-          key={module.id} 
-          path={module.name} 
-          element={<UniversalModulePage moduleName={module.name} />} 
-        />
-      ))}
-    </Route>
-    <Route path="*" element={<NotFound />} />
-  </Routes>
+      <Routes>
+        <Route path="/" element={<DynamicLayout />}>
+          <Route index element={<DynamicDashboard />} />
+          {/* Explicit route for Books Distribution page */}
+          <Route path="books_distribution" element={<BooksDistribution />} />
+          {/* Dynamic routes for all modules */}
+          {modules.map((module) => (
+            <Route
+              key={module.id}
+              path={module.name}
+              element={<UniversalModulePage moduleName={module.name} />}
+            />
+          ))}
+        </Route>
+        <Route path="*" element={<NotFound />} />
+      </Routes>
     </BrowserRouter>
   );
 }
