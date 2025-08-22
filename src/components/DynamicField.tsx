@@ -168,8 +168,28 @@ export function DynamicField({
 
       case "select": {
         const options = getOptions();
+
+        // Debug logging for gender field
+        if (field.field_name === "gender") {
+          console.log("🔍 Gender field debug:", {
+            fieldName: field.field_name,
+            currentValue: value,
+            options: options,
+            onChange: onChange,
+          });
+        }
+
         return (
-          <Select value={value || ""} onValueChange={onChange}>
+          <Select
+            key={`${field.field_name}-${value}`}
+            value={value || ""}
+            onValueChange={(newValue) => {
+              console.log(
+                `🔄 ${field.field_name} changed from "${value}" to "${newValue}"`
+              );
+              onChange(newValue);
+            }}
+          >
             <SelectTrigger>
               <SelectValue placeholder={`Select ${field.display_name}`} />
             </SelectTrigger>

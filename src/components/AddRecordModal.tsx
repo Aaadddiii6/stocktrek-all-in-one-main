@@ -211,12 +211,14 @@ interface AddRecordModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  defaultModuleType?: string;
 }
 
 export function AddRecordModal({
   open,
   onOpenChange,
   onSuccess,
+  defaultModuleType,
 }: AddRecordModalProps) {
   const { user } = useAuth();
   const [moduleType, setModuleType] = useState<string>("");
@@ -249,6 +251,15 @@ export function AddRecordModal({
   // Update form data when auto-carry values change – only fill empty fields
   useEffect(() => {
     if (!moduleType || Object.keys(autoCarryValues).length === 0) return;
+
+    // Skip auto-carry for gender field to prevent infinite loops
+    if (moduleType === "blazer" && Object.keys(autoCarryValues).length > 0) {
+      console.log(
+        "🔄 Auto-carry triggered but skipping for blazer to prevent loops"
+      );
+      return;
+    }
+
     setFormData((prev) => {
       const updated = { ...prev };
       Object.keys(autoCarryValues).forEach((fieldName) => {
@@ -264,6 +275,13 @@ export function AddRecordModal({
       return updated;
     });
   }, [autoCarryValues, moduleType]);
+
+  // Set default module type when modal opens
+  useEffect(() => {
+    if (open && defaultModuleType && !moduleType) {
+      setModuleType(defaultModuleType);
+    }
+  }, [open, defaultModuleType, moduleType]);
 
   const handleFieldChange = (fieldName: string, value: any) => {
     setFormData((prev) => ({
@@ -317,6 +335,24 @@ export function AddRecordModal({
         insertData.gender = insertData.gender || "Male";
       }
 
+      if (moduleType === "expenses") {
+        // Remove sr_no - it's auto-generated SERIAL field
+        delete insertData.sr_no;
+        // Let database generated column compute total; do not send 'total'
+        delete insertData.total;
+        // Remove opening_balance - it doesn't exist in daily_expenses table
+        delete insertData.opening_balance;
+
+        // Log the cleaned data for debugging
+        console.log("🧹 Daily expenses data after cleaning:", insertData);
+        console.log("🔍 Checking for sr_no:", insertData.sr_no);
+        console.log("🔍 Checking for total:", insertData.total);
+        console.log(
+          "🔍 Checking for opening_balance:",
+          insertData.opening_balance
+        );
+      }
+
       if (moduleType === "kits") {
         // DB computes closing_balance; do not send it
         delete insertData.closing_balance;
@@ -325,11 +361,48 @@ export function AddRecordModal({
       if (moduleType === "games") {
         // DB computes in_stock; do not send it
         delete insertData.in_stock;
+        // Remove in_office_stock - it doesn't exist in games_inventory table
+        delete insertData.in_office_stock;
+
+        // Log the cleaned data for debugging
+        console.log("🎮 Games data after cleaning:", insertData);
+        console.log("🔍 Checking for in_stock:", insertData.in_stock);
+        console.log(
+          "🔍 Checking for in_office_stock:",
+          insertData.in_office_stock
+        );
       }
 
-      if (moduleType === "expenses") {
-        // Let database generated column compute total; do not send 'total'
-        delete insertData.total;
+      if (moduleType === "courier") {
+        // Remove sr_no - it's auto-generated SERIAL field
+        delete insertData.sr_no;
+        // Remove opening_balance - it doesn't exist in courier_tracking table
+        delete insertData.opening_balance;
+
+        // Log the cleaned data for debugging
+        console.log("📦 Courier data after cleaning:", insertData);
+        console.log("🔍 Checking for sr_no:", insertData.sr_no);
+        console.log(
+          "🔍 Checking for opening_balance:",
+          insertData.opening_balance
+        );
+      }
+
+      if (moduleType === "books") {
+        // Remove previous_stock - it doesn't exist in books_distribution table
+        delete insertData.previous_stock;
+
+        // Log the cleaned data for debugging
+        console.log("📚 Books data after cleaning:", insertData);
+        console.log(
+          "🔍 Checking for previous_stock:",
+          insertData.previous_stock
+        );
+      }
+
+      if (moduleType === "kits") {
+        // DB computes closing_balance; do not send it
+        delete insertData.closing_balance;
       }
 
       console.log("📦 Final insert data:", insertData);
@@ -342,6 +415,20 @@ export function AddRecordModal({
 
       if (moduleError) {
         console.error("❌ Module insert error:", moduleError);
+        console.error("❌ Error details:", {
+          message: moduleError.message,
+          code: moduleError.code,
+          details: moduleError.details,
+          hint: moduleError.hint,
+          fullError: moduleError,
+        });
+
+        // Log the full error object for debugging
+        console.error(
+          "🔍 Full error object:",
+          JSON.stringify(moduleError, null, 2)
+        );
+
         throw moduleError;
       } else {
         console.log("✅ Successfully inserted into", tableName);
@@ -409,11 +496,12 @@ export function AddRecordModal({
               required={field.required}
               disabled={isDisabled}
             />
-            {showAutoCarryNote && (
+            {/* Auto-carry text hidden but functionality preserved */}
+            {/* {showAutoCarryNote && (
               <p className="text-sm text-muted-foreground">
                 Auto-carried from previous entry: {autoCarryValues[field.name]}
               </p>
-            )}
+            )} */}
           </div>
         );
 
@@ -514,9 +602,19 @@ export function AddRecordModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add New Record</DialogTitle>
+          <DialogTitle>
+            {moduleType
+              ? `Add ${
+                  MODULE_TYPES[moduleType as keyof typeof MODULE_TYPES]
+                } Record`
+              : "Add New Record"}
+          </DialogTitle>
           <DialogDescription>
-            Select a module type and fill in the required information.
+            {moduleType
+              ? `Add a new ${MODULE_TYPES[
+                  moduleType as keyof typeof MODULE_TYPES
+                ].toLowerCase()} record.`
+              : "Select a module type and fill in the required information."}
           </DialogDescription>
         </DialogHeader>
 
@@ -560,7 +658,13 @@ export function AddRecordModal({
               onClick={handleSubmit}
               disabled={!moduleType || isSubmitting}
             >
-              {isSubmitting ? "Adding..." : "Add Record"}
+              {isSubmitting
+                ? "Adding..."
+                : moduleType
+                ? `Add ${
+                    MODULE_TYPES[moduleType as keyof typeof MODULE_TYPES]
+                  } Record`
+                : "Add Record"}
             </Button>
           </div>
         </div>

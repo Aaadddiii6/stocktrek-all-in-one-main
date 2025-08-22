@@ -65,9 +65,18 @@ export function useAutoCarryStock(
     return tableName === "blazer_inventory" ? formData.gender : undefined;
   }, [tableName, formData]);
 
+  // Prevent infinite loops by not fetching when gender changes
+  const shouldFetch = useMemo(() => {
+    if (tableName === "blazer_inventory" && formData.gender) {
+      // Only fetch if we have a complete set of required fields
+      return false; // Skip fetching for blazer to prevent loops
+    }
+    return true;
+  }, [tableName, formData]);
+
   const fetchPreviousStock = useCallback(
     async (idValue: any, gender: any) => {
-      if (!tableName) return;
+      if (!tableName || !shouldFetch) return;
 
       const mapping = STOCK_FIELD_MAPPINGS[tableName];
       if (!mapping) {
@@ -155,7 +164,7 @@ export function useAutoCarryStock(
         setAutoCarryValues({});
       }
     },
-    [tableName]
+    [tableName, shouldFetch]
   );
 
   // Trigger fetch only when key inputs change (avoid spamming on every keystroke)

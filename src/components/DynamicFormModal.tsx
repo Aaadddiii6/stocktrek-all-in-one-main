@@ -296,12 +296,14 @@ export function DynamicFormModal({
                       field={{
                         ...field,
                         help_text:
-                          shouldAutoCarry(field.field_name) &&
-                          autoCarryValues[field.field_name] !== undefined
-                            ? `Auto-carried from previous entry: ${
-                                autoCarryValues[field.field_name]
-                              }`
-                            : field.help_text,
+                          // Auto-carried text hidden but functionality preserved
+                          // shouldAutoCarry(field.field_name) &&
+                          // autoCarryValues[field.field_name] !== undefined
+                          //   ? `Auto-carried from previous entry: ${
+                          //       autoCarryValues[field.field_name]
+                          //     }`
+                          //   : field.help_text,
+                          field.help_text,
                       }}
                       value={formData[field.field_name]}
                       onChange={(value) =>
