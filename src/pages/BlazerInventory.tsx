@@ -15,6 +15,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh";
 
 export default function BlazerInventory() {
+  console.log(
+    "🔍 BlazerInventory component rendered - using AddRecordModal with letter-based sizes"
+  );
+  console.log("🔍 Current URL path:", window.location.pathname);
+
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [stats, setStats] = useState({
     totalBlazers: 0,
@@ -32,18 +37,37 @@ export default function BlazerInventory() {
       if (error) throw error;
 
       const blazerData = data as any[];
-      const totalBlazers =
-        blazerData?.reduce((sum, item) => sum + item.quantity, 0) || 0;
-      const inOfficeStock =
-        blazerData?.reduce((sum, item) => sum + item.in_office_stock, 0) || 0;
-      const maleBlazers =
-        blazerData
-          ?.filter((item) => item.gender === "Male")
-          .reduce((sum, item) => sum + item.quantity, 0) || 0;
-      const femaleBlazers =
-        blazerData
-          ?.filter((item) => item.gender === "Female")
-          .reduce((sum, item) => sum + item.quantity, 0) || 0;
+
+      // Group by size and gender to get the latest record for each combination
+      const latestInventory = new Map();
+
+      blazerData.forEach((item) => {
+        const key = `${item.size}-${item.gender}`;
+        if (
+          !latestInventory.has(key) ||
+          new Date(item.created_at) >
+            new Date(latestInventory.get(key).created_at)
+        ) {
+          latestInventory.set(key, item);
+        }
+      });
+
+      // Calculate stats from latest inventory status (not from all transaction quantities)
+      const latestRecords = Array.from(latestInventory.values());
+
+      const totalBlazers = latestRecords.reduce(
+        (sum, item) => sum + (item.in_office_stock || 0),
+        0
+      );
+      const inOfficeStock = totalBlazers; // Same as total blazers since we're showing current inventory
+
+      const maleBlazers = latestRecords
+        .filter((item) => item.gender === "Male")
+        .reduce((sum, item) => sum + (item.in_office_stock || 0), 0);
+
+      const femaleBlazers = latestRecords
+        .filter((item) => item.gender === "Female")
+        .reduce((sum, item) => sum + (item.in_office_stock || 0), 0);
 
       setStats({
         totalBlazers,

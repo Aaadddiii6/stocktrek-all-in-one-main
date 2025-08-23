@@ -233,6 +233,8 @@ export function DailyExpensesTable({ onDataChange }: DailyExpensesTableProps) {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
+                id="expenses_search"
+                name="expenses_search"
                 placeholder="Search expenses..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -280,6 +282,8 @@ export function DailyExpensesTable({ onDataChange }: DailyExpensesTableProps) {
                     <TableCell>
                       {editingRecord === record.id ? (
                         <Input
+                          id={`fixed_amount_${record.id}`}
+                          name={`fixed_amount_${record.id}`}
                           type="number"
                           step="0.01"
                           value={editForm.fixed_amount || 0}
@@ -298,6 +302,8 @@ export function DailyExpensesTable({ onDataChange }: DailyExpensesTableProps) {
                     <TableCell>
                       {editingRecord === record.id ? (
                         <Input
+                          id={`expenses_${record.id}`}
+                          name={`expenses_${record.id}`}
                           type="number"
                           step="0.01"
                           value={editForm.expenses || 0}
@@ -345,6 +351,8 @@ export function DailyExpensesTable({ onDataChange }: DailyExpensesTableProps) {
                     <TableCell className="max-w-48 truncate">
                       {editingRecord === record.id ? (
                         <Input
+                          id={`remarks_${record.id}`}
+                          name={`remarks_${record.id}`}
                           value={editForm.remarks || ""}
                           onChange={(e) =>
                             setEditForm({

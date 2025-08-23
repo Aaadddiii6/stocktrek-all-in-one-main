@@ -11,12 +11,27 @@ import AuthForm from "./components/AuthForm";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { useDynamicModules } from "./hooks/useDynamicModules";
 import BooksDistribution from "./pages/BooksDistribution";
+import BlazerInventory from "./pages/BlazerInventory";
 
 const queryClient = new QueryClient();
 
 function AppContent() {
   const { user, loading } = useAuth();
   const { modules, isLoading: modulesLoading } = useDynamicModules();
+
+  // Debug: Log the modules being loaded
+  console.log(
+    "🔍 App - Dynamic modules loaded:",
+    modules?.map((m) => ({ name: m.name, display_name: m.display_name }))
+  );
+
+  // Debug: Log the routes being created
+  const dynamicRoutes = modules?.map((m) => `/${m.name}`) || [];
+  console.log("🔍 App - Dynamic routes being created:", dynamicRoutes);
+  console.log("🔍 App - Explicit routes:", [
+    "/books_distribution",
+    "/blazer-inventory",
+  ]);
 
   if (loading || modulesLoading) {
     return (
@@ -38,16 +53,19 @@ function AppContent() {
       <Routes>
         <Route path="/" element={<DynamicLayout />}>
           <Route index element={<DynamicDashboard />} />
-          {/* Explicit route for Books Distribution page */}
+          {/* Explicit routes - these must come BEFORE dynamic routes */}
           <Route path="books_distribution" element={<BooksDistribution />} />
+          <Route path="blazer_inventory" element={<BlazerInventory />} />
           {/* Dynamic routes for all modules */}
-          {modules.map((module) => (
-            <Route
-              key={module.id}
-              path={module.name}
-              element={<UniversalModulePage moduleName={module.name} />}
-            />
-          ))}
+          {modules
+            .filter((module) => module.name !== "blazer_inventory") // Filter out conflicting module
+            .map((module) => (
+              <Route
+                key={module.id}
+                path={module.name}
+                element={<UniversalModulePage moduleName={module.name} />}
+              />
+            ))}
         </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>

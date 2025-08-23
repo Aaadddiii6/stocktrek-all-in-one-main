@@ -62,7 +62,17 @@ export function DynamicField({
 
   const handleDateChange = (newDate: Date | undefined) => {
     setDate(newDate);
-    onChange(newDate ? format(newDate, "yyyy-MM-dd") : "");
+    if (newDate) {
+      // Create a date in local timezone to avoid timezone shifts
+      const localDate = new Date(
+        newDate.getFullYear(),
+        newDate.getMonth(),
+        newDate.getDate()
+      );
+      onChange(format(localDate, "yyyy-MM-dd"));
+    } else {
+      onChange("");
+    }
   };
 
   const renderField = () => {
@@ -73,6 +83,8 @@ export function DynamicField({
       case "url":
         return (
           <Input
+            id={field.field_name}
+            name={field.field_name}
             type={
               field.field_type === "email"
                 ? "email"
@@ -92,9 +104,11 @@ export function DynamicField({
       case "number":
         return (
           <Input
+            id={field.field_name}
+            name={field.field_name}
             type="number"
             value={value || ""}
-            onChange={(e) => onChange(Number(e.target.value) || 0)}
+            onChange={(e) => onChange(parseInt(e.target.value) || 0)}
             placeholder={field.placeholder || ""}
             disabled={disabled}
           />
@@ -103,6 +117,8 @@ export function DynamicField({
       case "decimal":
         return (
           <Input
+            id={field.field_name}
+            name={field.field_name}
             type="number"
             step="0.01"
             value={value || ""}
@@ -115,6 +131,8 @@ export function DynamicField({
       case "textarea": {
         return (
           <Textarea
+            id={field.field_name}
+            name={field.field_name}
             value={value || ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder={field.placeholder || ""}
@@ -126,6 +144,8 @@ export function DynamicField({
       case "boolean": {
         return (
           <Checkbox
+            id={field.field_name}
+            name={field.field_name}
             checked={value || false}
             onCheckedChange={onChange}
             disabled={disabled}
@@ -138,6 +158,8 @@ export function DynamicField({
           <Popover>
             <PopoverTrigger asChild>
               <Button
+                id={field.field_name}
+                name={field.field_name}
                 variant="outline"
                 className={cn(
                   "w-full justify-start text-left font-normal",
@@ -190,7 +212,7 @@ export function DynamicField({
               onChange(newValue);
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger id={field.field_name} name={field.field_name}>
               <SelectValue placeholder={`Select ${field.display_name}`} />
             </SelectTrigger>
             <SelectContent>
@@ -250,6 +272,8 @@ export function DynamicField({
       default: {
         return (
           <Input
+            id={field.field_name}
+            name={field.field_name}
             value={value || ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder={field.placeholder || ""}

@@ -2,13 +2,27 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ModuleActivityLogs } from "@/components/ModuleActivityLogs";
-import { DynamicFormModal } from "@/components/DynamicFormModal";
+import { AddRecordModal } from "@/components/AddRecordModal";
 import { UniversalTable } from "@/components/UniversalTable";
 import { Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh";
 import { useModuleDefinition, useModuleFields } from "@/hooks/useModuleConfig";
 import * as LucideIcons from "lucide-react";
+
+// Helper function to map module names to AddRecordModal types
+const getModuleType = (moduleName: string): string => {
+  const moduleTypeMap: Record<string, string> = {
+    games_inventory: "games",
+    kits_inventory: "kits",
+    daily_expenses: "expenses",
+    courier_tracking: "courier",
+    books_distribution: "books",
+    blazer_inventory: "blazer",
+  };
+
+  return moduleTypeMap[moduleName] || "kits"; // Default fallback
+};
 
 interface UniversalModulePageProps {
   moduleName: string;
@@ -331,16 +345,13 @@ export function UniversalModulePage({ moduleName }: UniversalModulePageProps) {
         />
       </div>
 
-      {/* Dynamic Add Record Modal */}
+      {/* Add Record Modal */}
       {isValidModule && isValidFields && (
-        <DynamicFormModal
+        <AddRecordModal
           open={isAddModalOpen}
           onOpenChange={setIsAddModalOpen}
           onSuccess={handleSuccessfulAdd}
-          moduleName={moduleName}
-          moduleDisplayName={moduleDefinition.display_name}
-          tableName={moduleDefinition.table_name}
-          fields={fields}
+          defaultModuleType={getModuleType(moduleName)}
         />
       )}
     </>

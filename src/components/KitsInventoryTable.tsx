@@ -1,13 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, Search, Download, Save, X } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useActivityLogger } from '@/hooks/useActivityLogger';
-import { toast } from 'sonner';
+import React, { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Edit, Trash2, Search, Download, Save, X } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useActivityLogger } from "@/hooks/useActivityLogger";
+import { toast } from "sonner";
 
 interface KitRecord {
   id: string;
@@ -29,7 +36,7 @@ interface KitsInventoryTableProps {
 export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
   const [records, setRecords] = useState<KitRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<KitRecord[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [editingRecord, setEditingRecord] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<KitRecord>>({});
@@ -38,17 +45,17 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
   const fetchRecords = async () => {
     try {
       const { data, error } = await supabase
-        .from('kits_inventory')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
+        .from("kits_inventory")
+        .select("*")
+        .order("created_at", { ascending: false });
+
       if (error) throw error;
-      
-      setRecords((data as unknown) as KitRecord[] || []);
-      setFilteredRecords((data as unknown) as KitRecord[] || []);
+
+      setRecords((data as unknown as KitRecord[]) || []);
+      setFilteredRecords((data as unknown as KitRecord[]) || []);
     } catch (error) {
-      console.error('Error fetching kit records:', error);
-      toast.error('Failed to load kit records');
+      console.error("Error fetching kit records:", error);
+      toast.error("Failed to load kit records");
     } finally {
       setLoading(false);
     }
@@ -59,14 +66,15 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
   }, []);
 
   useEffect(() => {
-    const filtered = records.filter(record => 
-      record.item_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.date.includes(searchTerm) ||
-      record.remarks?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.opening_balance.toString().includes(searchTerm) ||
-      record.addins.toString().includes(searchTerm) ||
-      record.takeouts.toString().includes(searchTerm) ||
-      (record.closing_balance?.toString() || '').includes(searchTerm)
+    const filtered = records.filter(
+      (record) =>
+        record.item_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.date.includes(searchTerm) ||
+        record.remarks?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.opening_balance.toString().includes(searchTerm) ||
+        record.addins.toString().includes(searchTerm) ||
+        record.takeouts.toString().includes(searchTerm) ||
+        (record.closing_balance?.toString() || "").includes(searchTerm)
     );
     setFilteredRecords(filtered);
   }, [searchTerm, records]);
@@ -78,26 +86,29 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
       opening_balance: record.opening_balance,
       addins: record.addins,
       takeouts: record.takeouts,
-      remarks: record.remarks || ''
+      remarks: record.remarks || "",
     });
   };
 
   const handleSaveEdit = async () => {
     if (!editingRecord) return;
 
-    const originalRecord = records.find(r => r.id === editingRecord);
+    const originalRecord = records.find((r) => r.id === editingRecord);
     if (!originalRecord) return;
 
     try {
       const updatedData = {
         ...editForm,
-        closing_balance: (editForm.opening_balance || 0) + (editForm.addins || 0) - (editForm.takeouts || 0)
+        closing_balance:
+          (editForm.opening_balance || 0) +
+          (editForm.addins || 0) -
+          (editForm.takeouts || 0),
       };
 
       const { error } = await supabase
-        .from('kits_inventory')
+        .from("kits_inventory")
         .update(updatedData)
-        .eq('id', editingRecord);
+        .eq("id", editingRecord);
 
       if (error) throw error;
 
@@ -111,21 +122,26 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
         return acc;
       }, {});
 
-      await logSuccess('kits_inventory', 'UPDATE', {
-        item_name: editForm.item_name,
-        changes,
-        summary: `Updated ${editForm.item_name} inventory`
-      }, editingRecord);
+      await logSuccess(
+        "kits_inventory",
+        "UPDATE",
+        {
+          item_name: editForm.item_name,
+          changes,
+          summary: `Updated ${editForm.item_name} inventory`,
+        },
+        editingRecord
+      );
 
-      toast.success('Kit record updated successfully');
+      toast.success("Kit record updated successfully");
       fetchRecords();
       onDataChange();
       setEditingRecord(null);
       setEditForm({});
     } catch (error: any) {
-      console.error('Error updating kit record:', error);
-      await logError('kits_inventory', 'UPDATE', error, editForm);
-      toast.error('Failed to update kit record');
+      console.error("Error updating kit record:", error);
+      await logError("kits_inventory", "UPDATE", error, editForm);
+      toast.error("Failed to update kit record");
     }
   };
 
@@ -135,61 +151,75 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
   };
 
   const handleDelete = async (record: KitRecord) => {
-    if (!confirm('Are you sure you want to delete this kit record?')) return;
+    if (!confirm("Are you sure you want to delete this kit record?")) return;
 
     try {
       const { error } = await supabase
-        .from('kits_inventory')
+        .from("kits_inventory")
         .delete()
-        .eq('id', record.id);
+        .eq("id", record.id);
 
       if (error) throw error;
 
-      await logSuccess('kits_inventory', 'DELETE', {
-        item_name: record.item_name,
-        opening_balance: record.opening_balance,
-        addins: record.addins,
-        takeouts: record.takeouts
-      }, record.id);
+      await logSuccess(
+        "kits_inventory",
+        "DELETE",
+        {
+          item_name: record.item_name,
+          opening_balance: record.opening_balance,
+          addins: record.addins,
+          takeouts: record.takeouts,
+        },
+        record.id
+      );
 
-      toast.success('Kit record deleted successfully');
+      toast.success("Kit record deleted successfully");
       fetchRecords();
       onDataChange();
     } catch (error: any) {
-      console.error('Error deleting kit record:', error);
-      await logError('kits_inventory', 'DELETE', error, record);
-      toast.error('Failed to delete kit record');
+      console.error("Error deleting kit record:", error);
+      await logError("kits_inventory", "DELETE", error, record);
+      toast.error("Failed to delete kit record");
     }
   };
 
   const exportToCSV = () => {
-    const headers = ['Item Name', 'Date', 'Opening Balance', 'Add-ins', 'Take-outs', 'Closing Balance', 'Remarks', 'Created At'];
-    const csvData = filteredRecords.map(record => [
+    const headers = [
+      "Item Name",
+      "Date",
+      "Opening Balance",
+      "Add-ins",
+      "Take-outs",
+      "Closing Balance",
+      "Remarks",
+      "Created At",
+    ];
+    const csvData = filteredRecords.map((record) => [
       record.item_name,
       record.date,
       record.opening_balance,
       record.addins,
       record.takeouts,
       record.closing_balance || 0,
-      record.remarks || '',
-      new Date(record.created_at).toLocaleDateString()
+      record.remarks || "",
+      new Date(record.created_at).toLocaleDateString(),
     ]);
 
     const csvContent = [headers, ...csvData]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n');
+      .map((row) => row.map((cell) => `"${cell}"`).join(","))
+      .join("\n");
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `kits-inventory-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `kits-inventory-${new Date().toISOString().split("T")[0]}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
 
-    toast.success('CSV export completed');
+    toast.success("CSV export completed");
   };
 
   if (loading) {
@@ -211,6 +241,8 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
+                id="kits_search"
+                name="kits_search"
                 placeholder="Search kits..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -232,7 +264,9 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
       <CardContent>
         {filteredRecords.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            {searchTerm ? 'No kit records found matching your search.' : 'No kit records found.'}
+            {searchTerm
+              ? "No kit records found matching your search."
+              : "No kit records found."}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -255,8 +289,15 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
                     <TableCell>
                       {editingRecord === record.id ? (
                         <Input
-                          value={editForm.item_name || ''}
-                          onChange={(e) => setEditForm({...editForm, item_name: e.target.value})}
+                          id={`edit_item_name_${record.id}`}
+                          name={`edit_item_name_${record.id}`}
+                          value={editForm.item_name || ""}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              item_name: e.target.value,
+                            })
+                          }
                           className="w-full"
                         />
                       ) : (
@@ -267,9 +308,16 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
                     <TableCell>
                       {editingRecord === record.id ? (
                         <Input
+                          id={`edit_opening_balance_${record.id}`}
+                          name={`edit_opening_balance_${record.id}`}
                           type="number"
                           value={editForm.opening_balance || 0}
-                          onChange={(e) => setEditForm({...editForm, opening_balance: parseInt(e.target.value) || 0})}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              opening_balance: parseInt(e.target.value) || 0,
+                            })
+                          }
                           className="w-20"
                         />
                       ) : (
@@ -279,9 +327,16 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
                     <TableCell>
                       {editingRecord === record.id ? (
                         <Input
+                          id={`edit_addins_${record.id}`}
+                          name={`edit_addins_${record.id}`}
                           type="number"
                           value={editForm.addins || 0}
-                          onChange={(e) => setEditForm({...editForm, addins: parseInt(e.target.value) || 0})}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              addins: parseInt(e.target.value) || 0,
+                            })
+                          }
                           className="w-20"
                         />
                       ) : (
@@ -291,9 +346,16 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
                     <TableCell>
                       {editingRecord === record.id ? (
                         <Input
+                          id={`edit_takeouts_${record.id}`}
+                          name={`edit_takeouts_${record.id}`}
                           type="number"
                           value={editForm.takeouts || 0}
-                          onChange={(e) => setEditForm({...editForm, takeouts: parseInt(e.target.value) || 0})}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              takeouts: parseInt(e.target.value) || 0,
+                            })
+                          }
                           className="w-20"
                         />
                       ) : (
@@ -302,22 +364,33 @@ export function KitsInventoryTable({ onDataChange }: KitsInventoryTableProps) {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {editingRecord === record.id 
-                          ? (editForm.opening_balance || 0) + (editForm.addins || 0) - (editForm.takeouts || 0)
-                          : record.closing_balance || record.opening_balance + record.addins - record.takeouts
-                        }
+                        {editingRecord === record.id
+                          ? (editForm.opening_balance || 0) +
+                            (editForm.addins || 0) -
+                            (editForm.takeouts || 0)
+                          : record.closing_balance ||
+                            record.opening_balance +
+                              record.addins -
+                              record.takeouts}
                       </Badge>
                     </TableCell>
                     <TableCell className="max-w-48 truncate">
                       {editingRecord === record.id ? (
                         <Input
-                          value={editForm.remarks || ''}
-                          onChange={(e) => setEditForm({...editForm, remarks: e.target.value})}
+                          id={`edit_remarks_${record.id}`}
+                          name={`edit_remarks_${record.id}`}
+                          value={editForm.remarks || ""}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              remarks: e.target.value,
+                            })
+                          }
                           className="w-full"
                           placeholder="Remarks"
                         />
                       ) : (
-                        record.remarks || '-'
+                        record.remarks || "-"
                       )}
                     </TableCell>
                     <TableCell className="text-right">

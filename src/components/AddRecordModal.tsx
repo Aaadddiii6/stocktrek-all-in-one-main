@@ -73,7 +73,13 @@ const FIELD_CONFIGS = {
     },
   ],
   kits: [
-    { name: "item_name", label: "Item Name", type: "text", required: true },
+    {
+      name: "item_name",
+      label: "Item Name",
+      type: "select",
+      required: true,
+      options: [],
+    },
     { name: "date", label: "Date", type: "date", required: true },
     {
       name: "opening_balance",
@@ -81,12 +87,36 @@ const FIELD_CONFIGS = {
       type: "number",
       required: true,
     },
-    { name: "addins", label: "Add-ins", type: "number", required: true },
-    { name: "takeouts", label: "Take-outs", type: "number", required: true },
-    { name: "remarks", label: "Remarks", type: "textarea" },
+    {
+      name: "addins",
+      label: "Add-ins",
+      type: "number",
+      required: false,
+      placeholder: "Enter add-ins quantity (default: 0)",
+    },
+    {
+      name: "takeouts",
+      label: "Take-outs",
+      type: "number",
+      required: false,
+      placeholder: "Enter take-outs quantity (default: 0)",
+    },
+    {
+      name: "remarks",
+      label: "Remarks",
+      type: "textarea",
+      required: false,
+    },
   ],
   expenses: [
     { name: "date", label: "Date", type: "date", required: true },
+    {
+      name: "expense_category",
+      label: "Expense Category",
+      type: "select",
+      required: true,
+      options: ["Transport", "Food", "Stationary", "Other"],
+    },
     { name: "expenses", label: "Expenses", type: "number", required: true },
     {
       name: "fixed_amount",
@@ -116,14 +146,12 @@ const FIELD_CONFIGS = {
         "F-L",
         "F-XL",
         "F-XXL",
-        "M-36",
-        "M-38",
-        "M-40",
-        "M-42",
-        "M-44",
-        "M-46",
-        "M-48",
-        "M-50",
+        "M-XS",
+        "M-S",
+        "M-M",
+        "M-L",
+        "M-XL",
+        "M-XXL",
       ],
       required: true,
     },
@@ -139,10 +167,12 @@ const FIELD_CONFIGS = {
   games: [
     {
       name: "game_details",
-      label: "Game Details",
-      type: "text",
+      label: "Game Name",
+      type: "select",
       required: true,
+      options: [],
     },
+    { name: "date", label: "Date", type: "date", required: true },
     {
       name: "previous_stock",
       label: "Previous Stock",
@@ -227,15 +257,83 @@ export function AddRecordModal({
 
   // Get table name for auto-carry functionality
   const getTableName = (moduleType: string): string => {
-    const tableMapping = {
-      courier: "courier_tracking",
-      kits: "kits_inventory",
-      expenses: "daily_expenses",
+    const tableMapping: Record<string, string> = {
       blazer: "blazer_inventory",
+      kits: "kits_inventory",
       games: "games_inventory",
+      expenses: "daily_expenses",
       books: "books_distribution",
+      courier: "courier_tracking",
     };
-    return tableMapping[moduleType as keyof typeof tableMapping] || "";
+    return tableMapping[moduleType] || "";
+  };
+
+  // Fetch existing kit names for dropdown
+  const [kitNames, setKitNames] = useState<string[]>([]);
+  const [isLoadingKits, setIsLoadingKits] = useState(false);
+
+  // Fetch existing games names for dropdown
+  const [gameNames, setGameNames] = useState<string[]>([]);
+  const [isLoadingGames, setIsLoadingGames] = useState(false);
+
+  useEffect(() => {
+    if (moduleType === "kits") {
+      fetchKitNames();
+    } else if (moduleType === "games") {
+      fetchGameNames();
+    }
+  }, [moduleType]);
+
+  const fetchKitNames = async () => {
+    setIsLoadingKits(true);
+    try {
+      const { data, error } = await supabase
+        .from("kits_inventory")
+        .select("item_name")
+        .not("item_name", "is", null);
+
+      if (error) {
+        console.error("❌ Error fetching kit names:", error);
+        return;
+      }
+
+      // Extract unique item names
+      const uniqueNames = [
+        ...new Set(data.map((item) => item.item_name)),
+      ].sort();
+      setKitNames(uniqueNames);
+      console.log("✅ Kit names fetched:", uniqueNames);
+    } catch (error) {
+      console.error("❌ Error fetching kit names:", error);
+    } finally {
+      setIsLoadingKits(false);
+    }
+  };
+
+  const fetchGameNames = async () => {
+    setIsLoadingGames(true);
+    try {
+      const { data, error } = await supabase
+        .from("games_inventory")
+        .select("game_details")
+        .not("game_details", "is", null);
+
+      if (error) {
+        console.error("❌ Error fetching game names:", error);
+        return;
+      }
+
+      // Extract unique item names
+      const uniqueNames = [
+        ...new Set(data.map((item) => item.game_details)),
+      ].sort();
+      setGameNames(uniqueNames);
+      console.log("✅ Game names fetched:", uniqueNames);
+    } catch (error) {
+      console.error("❌ Error fetching game names:", error);
+    } finally {
+      setIsLoadingGames(false);
+    }
   };
 
   const { autoCarryValues, shouldAutoCarry, canEditField } = useAutoCarryStock(
@@ -245,50 +343,115 @@ export function AddRecordModal({
 
   const handleModuleTypeChange = (value: string) => {
     setModuleType(value);
-    setFormData({});
+    // Set default values for kits when switching to kits module
+    if (value === "kits") {
+      setFormData({
+        addins: 0,
+        takeouts: 0,
+      });
+      console.log(
+        "🔍 Module type changed to kits - initialized with default values (addins: 0, takeouts: 0)"
+      );
+    } else {
+      // Don't reset form data completely - preserve user input for other modules
+      // setFormData({});
+      console.log(
+        "🔍 Module type changed to:",
+        value,
+        "- preserving existing form data"
+      );
+    }
   };
 
-  // Update form data when auto-carry values change – only fill empty fields
+  // Update form data when auto-carry values change – auto-carry values are already filtered
   useEffect(() => {
     if (!moduleType || Object.keys(autoCarryValues).length === 0) return;
 
-    // Skip auto-carry for gender field to prevent infinite loops
-    if (moduleType === "blazer" && Object.keys(autoCarryValues).length > 0) {
-      console.log(
-        "🔄 Auto-carry triggered but skipping for blazer to prevent loops"
-      );
+    console.log("🔄 Auto-carry values received:", autoCarryValues);
+    console.log("🔄 Current form data:", formData);
+
+    // 🚀 THE FIX: Only update if values are actually different
+    const needsUpdate = Object.keys(autoCarryValues).some(
+      (key) => formData[key] !== autoCarryValues[key]
+    );
+
+    if (!needsUpdate) {
+      console.log("🔄 No update needed - values are the same");
       return;
     }
 
-    setFormData((prev) => {
-      const updated = { ...prev };
-      Object.keys(autoCarryValues).forEach((fieldName) => {
-        const current = prev[fieldName];
-        const carryVal = autoCarryValues[fieldName];
-        if (
-          (current === "" || current === undefined || current === null) &&
-          carryVal !== undefined
-        ) {
-          updated[fieldName] = carryVal;
-        }
-      });
+    // 🚀 THE FIX: Use functional update to ensure we merge with the LATEST state
+    setFormData((prevFormData) => {
+      console.log("🔄 Before auto-carry update - prev formData:", prevFormData);
+
+      // Merge auto-carry values with existing form data
+      const updated = {
+        ...prevFormData, // Keep all existing user input (including item_name)
+        ...autoCarryValues, // Add the auto-carry values
+      };
+
+      console.log("🔄 After auto-carry update - updated formData:", updated);
+      console.log("🔄 Form data updated with auto-carry values");
       return updated;
     });
-  }, [autoCarryValues, moduleType]);
+  }, [autoCarryValues, moduleType]); // Removed formData dependency to prevent loops
+
+  // 🔍 DEBUG: Track formData changes
+  useEffect(() => {
+    console.log("🔍 FormData changed:", formData);
+    console.log("🔍 item_name in formData:", formData.item_name);
+  }, [formData]);
 
   // Set default module type when modal opens
   useEffect(() => {
     if (open && defaultModuleType && !moduleType) {
       setModuleType(defaultModuleType);
+      // Reset form data when modal opens with default values for kits
+      if (defaultModuleType === "kits") {
+        setFormData({
+          addins: 0,
+          takeouts: 0,
+        });
+        console.log(
+          "🔍 AddRecordModal - Kits form initialized with default values (addins: 0, takeouts: 0)"
+        );
+      } else {
+        setFormData({});
+      }
+      console.log("🔍 AddRecordModal - Module type set to:", defaultModuleType);
+      if (defaultModuleType === "blazer") {
+        console.log(
+          "🔍 AddRecordModal - Blazer size options:",
+          FIELD_CONFIGS.blazer[1].options
+        );
+      }
     }
   }, [open, defaultModuleType, moduleType]);
 
+  // Reset form when modal closes
+  useEffect(() => {
+    if (!open) {
+      setFormData({});
+      setModuleType("");
+      console.log("🔍 AddRecordModal - Modal closed, form reset");
+    }
+  }, [open]);
+
   const handleFieldChange = (fieldName: string, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      [fieldName]: value,
-    }));
+    console.log(
+      `🔍 Field change: ${fieldName} = "${value}" (was: "${formData[fieldName]}")`
+    );
+    console.log(`🔍 Form data before change:`, formData);
+
+    setFormData((prev) => {
+      const updated = { ...prev, [fieldName]: value };
+      console.log(`🔍 Form data after change:`, updated);
+      console.log(`🔍 item_name after change:`, updated.item_name);
+      return updated;
+    });
   };
+
+  // Removed Enter key handling - using simple debounced approach
 
   const handleSubmit = async () => {
     if (!moduleType || !user) return;
@@ -298,7 +461,8 @@ export function AddRecordModal({
 
     // Validate required fields
     for (const field of requiredFields) {
-      if (!formData[field.name]) {
+      const value = formData[field.name];
+      if (value === undefined || value === null || value === "") {
         toast.error(`${field.label} is required`);
         return;
       }
@@ -356,6 +520,27 @@ export function AddRecordModal({
       if (moduleType === "kits") {
         // DB computes closing_balance; do not send it
         delete insertData.closing_balance;
+        // Ensure addins and takeouts have default values
+        if (
+          insertData.addins === undefined ||
+          insertData.addins === null ||
+          insertData.addins === ""
+        ) {
+          insertData.addins = 0;
+        }
+        if (
+          insertData.takeouts === undefined ||
+          insertData.takeouts === null ||
+          insertData.takeouts === ""
+        ) {
+          insertData.takeouts = 0;
+        }
+        console.log(
+          "🔧 Kits data after setting defaults - addins:",
+          insertData.addins,
+          "takeouts:",
+          insertData.takeouts
+        );
       }
 
       if (moduleType === "games") {
@@ -400,18 +585,19 @@ export function AddRecordModal({
         );
       }
 
-      if (moduleType === "kits") {
-        // DB computes closing_balance; do not send it
-        delete insertData.closing_balance;
-      }
-
       console.log("📦 Final insert data:", insertData);
 
       // Insert into the specific module table
       console.log("💾 Inserting into table:", tableName);
-      const { error: moduleError } = await (supabase as any)
+      console.log(
+        "📦 Insert data being sent:",
+        JSON.stringify(insertData, null, 2)
+      );
+
+      const { error: moduleError, data: insertResult } = await (supabase as any)
         .from(tableName)
-        .insert(insertData);
+        .insert(insertData)
+        .select();
 
       if (moduleError) {
         console.error("❌ Module insert error:", moduleError);
@@ -432,6 +618,7 @@ export function AddRecordModal({
         throw moduleError;
       } else {
         console.log("✅ Successfully inserted into", tableName);
+        console.log("📊 Insert result:", insertResult);
       }
 
       // Also insert into activity logs for tracking
@@ -452,11 +639,26 @@ export function AddRecordModal({
       }
 
       console.log("🎉 Record creation successful!");
+      console.log("🔍 About to close modal and reset form...");
       toast.success("Record added successfully");
       onOpenChange(false);
+      console.log("🔍 Modal closed, resetting form state...");
       setModuleType("");
-      setFormData({});
+      // Reset form with default values for kits
+      if (moduleType === "kits") {
+        setFormData({
+          addins: 0,
+          takeouts: 0,
+        });
+        console.log(
+          "🔍 Kits form reset with default values (addins: 0, takeouts: 0)"
+        );
+      } else {
+        setFormData({});
+      }
+      console.log("🔍 Form state reset complete, calling onSuccess...");
       onSuccess();
+      console.log("🔍 onSuccess callback completed");
     } catch (error) {
       console.error("❌ Error adding record:", error);
       toast.error("Failed to add record");
@@ -476,7 +678,7 @@ export function AddRecordModal({
       case "text":
       case "number":
         return (
-          <div key={field.name} className="space-y-2">
+          <div key={`${moduleType}-${field.name}`} className="space-y-2">
             <Label htmlFor={field.name}>
               {field.label}{" "}
               {field.required && <span className="text-destructive">*</span>}
@@ -495,7 +697,15 @@ export function AddRecordModal({
               }
               required={field.required}
               disabled={isDisabled}
+              placeholder={field.placeholder}
             />
+            {/* Show helpful text for addins/takeouts fields */}
+            {(field.name === "addins" || field.name === "takeouts") &&
+              moduleType === "kits" && (
+                <p className="text-sm text-muted-foreground">
+                  Leave empty to use default value of 0
+                </p>
+              )}
             {/* Auto-carry text hidden but functionality preserved */}
             {/* {showAutoCarryNote && (
               <p className="text-sm text-muted-foreground">
@@ -507,7 +717,7 @@ export function AddRecordModal({
 
       case "textarea":
         return (
-          <div key={field.name} className="space-y-2">
+          <div key={`${moduleType}-${field.name}`} className="space-y-2">
             <Label htmlFor={field.name}>
               {field.label}{" "}
               {field.required && <span className="text-destructive">*</span>}
@@ -523,7 +733,7 @@ export function AddRecordModal({
 
       case "select":
         return (
-          <div key={field.name} className="space-y-2">
+          <div key={`${moduleType}-${field.name}`} className="space-y-2">
             <Label htmlFor={field.name}>
               {field.label}{" "}
               {field.required && <span className="text-destructive">*</span>}
@@ -540,6 +750,10 @@ export function AddRecordModal({
                   ? formData.gender === "Male"
                     ? field.options?.filter((o: string) => o.startsWith("M-"))
                     : field.options?.filter((o: string) => o.startsWith("F-"))
+                  : field.name === "item_name" && moduleType === "kits"
+                  ? kitNames
+                  : field.name === "game_details" && moduleType === "games"
+                  ? gameNames
                   : field.options
                 )?.map((option: string) => (
                   <SelectItem key={option} value={option}>
@@ -555,7 +769,7 @@ export function AddRecordModal({
 
       case "date":
         return (
-          <div key={field.name} className="space-y-2">
+          <div key={`${moduleType}-${field.name}`} className="space-y-2">
             <Label htmlFor={field.name}>
               {field.label}{" "}
               {field.required && <span className="text-destructive">*</span>}
@@ -582,7 +796,16 @@ export function AddRecordModal({
                   onSelect={(date) =>
                     handleFieldChange(
                       field.name,
-                      date?.toISOString().split("T")[0]
+                      date
+                        ? (() => {
+                            const localDate = new Date(
+                              date.getFullYear(),
+                              date.getMonth(),
+                              date.getDate()
+                            );
+                            return format(localDate, "yyyy-MM-dd");
+                          })()
+                        : ""
                     )
                   }
                   initialFocus
@@ -638,7 +861,7 @@ export function AddRecordModal({
           </div>
 
           {moduleType && (
-            <div className="space-y-4">
+            <div key={moduleType} className="space-y-4">
               <h3 className="text-lg font-medium">
                 {MODULE_TYPES[moduleType as keyof typeof MODULE_TYPES]} Details
               </h3>
@@ -647,6 +870,7 @@ export function AddRecordModal({
                   renderField
                 )}
               </div>
+              {/* Removed Enter key tip - using simple debounced approach */}
             </div>
           )}
 

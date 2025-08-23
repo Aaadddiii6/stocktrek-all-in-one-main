@@ -1,46 +1,56 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { ModuleActivityLogs } from '@/components/ModuleActivityLogs';
-import { AddGameRecordModal } from '@/components/AddGameRecordModal';
-import { GamesInventoryTable } from '@/components/GamesInventoryTable';
-import { Gamepad2, Plus, TrendingUp, Package } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ModuleActivityLogs } from "@/components/ModuleActivityLogs";
+import { AddRecordModal } from "@/components/AddRecordModal";
+import { GamesInventoryTable } from "@/components/GamesInventoryTable";
+import { Gamepad2, Plus, TrendingUp, Package } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh";
 
 export default function GamesInventory() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [stats, setStats] = useState({
     totalGames: 0,
     distributed: 0,
-    stockAvailable: 0
+    stockAvailable: 0,
   });
 
   const fetchGamesStats = async () => {
     try {
       const { data, error } = await supabase
-        .from('games_inventory')
-        .select('*');
-      
+        .from("games_inventory")
+        .select("*");
+
       if (error) throw error;
-      
+
       const totalGames = data?.length || 0;
       const distributed = data?.reduce((sum, item) => sum + item.sent, 0) || 0;
-      const stockAvailable = data?.reduce((sum, item) => sum + (item.previous_stock + item.adding - item.sent), 0) || 0;
-      
+      const stockAvailable =
+        data?.reduce(
+          (sum, item) => sum + (item.previous_stock + item.adding - item.sent),
+          0
+        ) || 0;
+
       setStats({
         totalGames,
         distributed,
-        stockAvailable
+        stockAvailable,
       });
     } catch (error) {
-      console.error('Error fetching games stats:', error);
+      console.error("Error fetching games stats:", error);
     }
   };
 
-  useRealtimeRefresh({ 
-    table: 'games_inventory', 
-    onRefresh: fetchGamesStats 
+  useRealtimeRefresh({
+    table: "games_inventory",
+    onRefresh: fetchGamesStats,
   });
 
   useEffect(() => {
@@ -52,10 +62,17 @@ export default function GamesInventory() {
       <div className="space-y-6">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Games Inventory</h1>
-            <p className="text-muted-foreground">Track educational games distribution</p>
+            <h1 className="text-2xl font-bold text-foreground">
+              Games Inventory
+            </h1>
+            <p className="text-muted-foreground">
+              Track educational games distribution
+            </p>
           </div>
-          <Button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2">
+          <Button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2"
+          >
             <Plus className="h-4 w-4" />
             Add Game Record
           </Button>
@@ -75,7 +92,7 @@ export default function GamesInventory() {
               </p>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Distributed</CardTitle>
@@ -83,22 +100,20 @@ export default function GamesInventory() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.distributed}</div>
-              <p className="text-xs text-muted-foreground">
-                Games sent out
-              </p>
+              <p className="text-xs text-muted-foreground">Games sent out</p>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Stock Available</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Stock Available
+              </CardTitle>
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.stockAvailable}</div>
-              <p className="text-xs text-muted-foreground">
-                Current inventory
-              </p>
+              <p className="text-xs text-muted-foreground">Current inventory</p>
             </CardContent>
           </Card>
         </div>
@@ -107,17 +122,21 @@ export default function GamesInventory() {
         <GamesInventoryTable onDataChange={fetchGamesStats} />
 
         {/* Activity Logs */}
-        <ModuleActivityLogs moduleType="games_inventory" moduleName="Games Inventory" />
+        <ModuleActivityLogs
+          moduleType="games_inventory"
+          moduleName="Games Inventory"
+        />
       </div>
 
       {/* Add Record Modal */}
-      <AddGameRecordModal
+      <AddRecordModal
         open={isAddModalOpen}
         onOpenChange={setIsAddModalOpen}
         onSuccess={() => {
           setIsAddModalOpen(false);
           fetchGamesStats();
         }}
+        defaultModuleType="games"
       />
     </>
   );

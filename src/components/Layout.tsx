@@ -1,21 +1,21 @@
-import React from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { cn } from '@/lib/utils';
-import { 
-  Package, 
-  Truck, 
-  HardHat, 
-  DollarSign, 
-  Gamepad2, 
+import React from "react";
+import { Outlet, Link, useLocation } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import {
+  Package,
+  Truck,
+  HardHat,
+  DollarSign,
+  Gamepad2,
   BookOpen,
   Home,
   Menu,
   X,
   LogOut,
-  User
-} from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/button';
+  User,
+} from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,16 +24,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useState } from 'react';
+import { useState } from "react";
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: Home },
-  { name: 'Courier Tracking', href: '/courier', icon: Truck },
-  { name: 'Kits Inventory', href: '/kits', icon: Package },
-  { name: 'Daily Expenses', href: '/expenses', icon: DollarSign },
-  { name: 'Blazer Inventory', href: '/blazer', icon: HardHat },
-  { name: 'Games Inventory', href: '/games', icon: Gamepad2 },
-  { name: 'Books Distribution', href: '/books', icon: BookOpen },
+  { name: "Dashboard", href: "/", icon: Home },
+  { name: "Courier Tracking", href: "/courier", icon: Truck },
+  { name: "Kits Inventory", href: "/kits", icon: Package },
+  { name: "Daily Expenses", href: "/expenses", icon: DollarSign },
+  { name: "Blazer Inventory", href: "/blazer_inventory", icon: HardHat },
+  { name: "Games Inventory", href: "/games", icon: Gamepad2 },
+  { name: "Books Distribution", href: "/books", icon: BookOpen },
 ];
 
 export function Layout() {
@@ -45,22 +45,31 @@ export function Layout() {
     try {
       await signOut();
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error("Error signing out:", error);
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile sidebar */}
-      <div className={cn(
-        "fixed inset-0 z-50 lg:hidden",
-        isMobileMenuOpen ? "block" : "hidden"
-      )}>
-        <div className="fixed inset-0 bg-black/50" onClick={() => setIsMobileMenuOpen(false)} />
+      <div
+        className={cn(
+          "fixed inset-0 z-50 lg:hidden",
+          isMobileMenuOpen ? "block" : "hidden"
+        )}
+      >
+        <div
+          className="fixed inset-0 bg-black/50"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
         <div className="fixed left-0 top-0 h-full w-64 bg-card shadow-lg">
           <div className="flex h-16 items-center justify-between px-4">
             <h1 className="text-xl font-bold text-primary">Inventory System</h1>
-            <Button variant="ghost" size="sm" onClick={() => setIsMobileMenuOpen(false)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
               <X className="h-5 w-5" />
             </Button>
           </div>
@@ -138,11 +147,15 @@ export function Layout() {
             <div className="text-xl font-bold text-primary">
               Inventory System
             </div>
-            
+
             {/* User Profile Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
                   <User className="h-4 w-4" />
                   <span className="hidden sm:inline">{user?.email}</span>
                 </Button>

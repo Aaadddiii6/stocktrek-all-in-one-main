@@ -12,12 +12,18 @@ const STOCK_FIELD_MAPPINGS: Record<
 > = {
   kits_inventory: {
     stockFields: ["opening_balance"],
+    identifierField: "item_name",
   },
   games_inventory: {
     stockFields: ["previous_stock"],
+    identifierField: "item_name",
   },
   blazer_inventory: {
     stockFields: ["quantity", "in_office_stock"],
+  },
+  daily_expenses: {
+    stockFields: ["fixed_amount"],
+    identifierField: "expense_category",
   },
 };
 
@@ -29,156 +35,393 @@ export function useAutoCarryStock(
     {}
   );
   const [isLoading, setIsLoading] = useState(false);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isProcessingRef = useRef(false); // Prevent infinite loops
+
+  // 🚀 THE COMPLETE SOLUTION: Create a single, stable trigger value
+  const triggerValue = useMemo(() => {
+    if (tableName === "blazer_inventory") {
+      return formData?.gender && formData?.size
+        ? `${formData.gender}-${formData.size}`
+        : null;
+    } else if (
+      tableName === "kits_inventory" ||
+      tableName === "games_inventory"
+    ) {
+      return tableName === "kits_inventory"
+        ? formData?.item_name || null
+        : formData?.game_details || null;
+    } else if (tableName === "daily_expenses") {
+      return formData?.expense_category || null;
+    }
+    return null;
+  }, [
+    tableName,
+    formData?.gender,
+    formData?.size,
+    formData?.item_name,
+    formData?.game_details,
+    formData?.expense_category,
+  ]);
 
   const shouldAutoCarry = useCallback(
     (fieldName: string): boolean => {
+      if (!tableName) return false;
+
       const mapping = STOCK_FIELD_MAPPINGS[tableName];
       if (!mapping) return false;
 
+      if (tableName === "blazer_inventory") {
+        return (
+          formData.gender && formData.size && fieldName === "in_office_stock"
+        );
+      } else if (tableName === "kits_inventory") {
+        return formData.item_name && fieldName === "opening_balance";
+      } else if (tableName === "games_inventory") {
+        return formData.game_details && fieldName === "previous_stock";
+      } else if (tableName === "daily_expenses") {
+        return formData.expense_category && fieldName === "fixed_amount";
+      }
+
       return mapping.stockFields.includes(fieldName);
     },
-    [tableName]
+    [tableName, formData]
   );
 
-  const getAutoCarryValue = (fieldName: string): any => {
-    return autoCarryValues[fieldName];
-  };
+  const getAutoCarryValue = useCallback(
+    (fieldName: string): any => {
+      return autoCarryValues[fieldName];
+    },
+    [autoCarryValues]
+  );
 
-  const canEditField = (fieldName: string): boolean => {
-    // For now, allow editing of all fields
-    // In the future, you could implement logic to prevent editing of auto-carried fields
-    return true;
-  };
-
-  const inFlightRef = useRef(false);
-  const lastKeyRef = useRef<string | null>(null);
-
-  const identifierField = useMemo(() => {
-    return STOCK_FIELD_MAPPINGS[tableName]?.identifierField;
-  }, [tableName]);
-
-  const identifierValue = useMemo(() => {
-    return identifierField ? formData[identifierField] : undefined;
-  }, [identifierField, formData]);
-
-  const genderValue = useMemo(() => {
-    return tableName === "blazer_inventory" ? formData.gender : undefined;
-  }, [tableName, formData]);
-
-  // Prevent infinite loops by not fetching when gender changes
-  const shouldFetch = useMemo(() => {
-    if (tableName === "blazer_inventory" && formData.gender) {
-      // Only fetch if we have a complete set of required fields
-      return false; // Skip fetching for blazer to prevent loops
-    }
-    return true;
-  }, [tableName, formData]);
-
-  const fetchPreviousStock = useCallback(
-    async (idValue: any, gender: any) => {
-      if (!tableName || !shouldFetch) return;
+  const canEditField = useCallback(
+    (fieldName: string): boolean => {
+      if (!tableName) return false;
 
       const mapping = STOCK_FIELD_MAPPINGS[tableName];
-      if (!mapping) {
-        setAutoCarryValues({});
+      if (!mapping) return false;
+
+      if (tableName === "blazer_inventory") {
+        return (
+          formData.gender && formData.size && fieldName === "in_office_stock"
+        );
+      } else if (tableName === "kits_inventory") {
+        return formData.item_name && fieldName === "opening_balance";
+      } else if (tableName === "games_inventory") {
+        return formData.game_details && fieldName === "previous_stock";
+      } else if (tableName === "daily_expenses") {
+        return formData.expense_category && fieldName === "fixed_amount";
+      }
+
+      return mapping.stockFields.includes(fieldName);
+    },
+    [tableName, formData]
+  );
+
+  const sizeValue = useMemo(() => {
+    return formData?.size || null;
+  }, [formData?.size]);
+
+  const fetchPreviousStock = useCallback(
+    async (
+      tableName: string,
+      formData: Record<string, any>,
+      triggerValue: string | null
+    ) => {
+      if (isProcessingRef.current) {
+        console.log("🚫 Already processing auto-carry, skipping...");
         return;
       }
 
+      isProcessingRef.current = true;
+      console.log("🚀 fetchPreviousStock STARTED:", {
+        tableName,
+        formData,
+        triggerValue,
+      });
+
       try {
-        // First try to get from the stock table
-        if (mapping.stockTable) {
-          let stockQuery = (supabase as any)
-            .from(mapping.stockTable)
-            .select("*");
+        const mapping = STOCK_FIELD_MAPPINGS[tableName];
+        if (!mapping) {
+          console.log("❌ No mapping found for table:", tableName);
+          return;
+        }
 
-          if (mapping.identifierField && idValue) {
-            stockQuery = stockQuery.eq(mapping.identifierField, idValue);
+        console.log("✅ Mapping found:", mapping);
+
+        let latestRecord: any = null;
+        const newAutoCarryValues: Record<string, any> = {};
+
+        if (tableName === "blazer_inventory") {
+          // Validate required fields before querying
+          if (!formData.gender || !formData.size) {
+            console.log("🔍 Skipping blazer query - missing required fields:", {
+              gender: formData.gender,
+              size: formData.size,
+            });
+            return;
           }
 
-          if (tableName === "blazer_inventory" && gender) {
-            stockQuery = stockQuery.eq("gender", gender);
-          }
+          // For blazer inventory, get the latest record for the same gender and size
+          console.log("🔍 Fetching blazer inventory data for:", {
+            gender: formData.gender,
+            size: formData.size,
+          });
 
-          const { data: stockData, error: stockError } = await stockQuery
-            .order("updated_at", { ascending: false })
+          const { data, error } = await supabase
+            .from(tableName as any)
+            .select("*")
+            .eq("gender", formData.gender)
+            .eq("size", formData.size)
             .order("created_at", { ascending: false })
             .limit(1);
 
-          if (stockError) throw stockError;
+          if (error) {
+            console.error("❌ Supabase error:", error);
+            throw error;
+          }
 
-          if (stockData && stockData.length > 0) {
-            const latestStock = stockData[0];
-            const newAutoCarryValues: Record<string, any> = {};
+          latestRecord = data?.[0];
+          console.log("🔍 Latest blazer record found:", latestRecord);
 
-            mapping.stockFields.forEach((field) => {
-              if (
-                latestStock[field] !== undefined &&
-                latestStock[field] !== null
-              ) {
-                newAutoCarryValues[field] = latestStock[field];
-              }
+          if (latestRecord) {
+            const previousOfficeStock = latestRecord.in_office_stock || 0;
+            const previousQuantity = latestRecord.quantity || 0;
+            const calculatedOfficeStock =
+              previousOfficeStock - previousQuantity;
+
+            newAutoCarryValues.in_office_stock = Math.max(
+              0,
+              calculatedOfficeStock
+            );
+            newAutoCarryValues.quantity = 0; // Reset quantity for new record
+
+            console.log("🔍 Auto-carry values calculated:", {
+              previousOfficeStock,
+              previousQuantity,
+              calculatedOfficeStock,
+              newOfficeStock: newAutoCarryValues.in_office_stock,
             });
-
-            setAutoCarryValues(newAutoCarryValues);
+          } else {
+            console.log(
+              "🔍 No previous blazer record found for this gender/size combination"
+            );
+          }
+        } else if (tableName === "kits_inventory") {
+          // Validate required fields before querying
+          if (!formData.item_name) {
+            console.log(
+              "🔍 Skipping kits query - missing item_name:",
+              formData.item_name
+            );
             return;
+          }
+
+          // For kits inventory, get the latest record for the same item_name
+          console.log(
+            "🔍 Fetching kits inventory data for item:",
+            formData.item_name
+          );
+
+          const { data, error } = await supabase
+            .from(tableName as any)
+            .select("*")
+            .eq("item_name", formData.item_name)
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          if (error) {
+            console.error("❌ Supabase error:", error);
+            throw error;
+          }
+
+          latestRecord = data?.[0];
+          console.log("🔍 Latest kits record found:", latestRecord);
+
+          if (latestRecord) {
+            // Auto-carry the closing_balance as opening_balance for the new record
+            newAutoCarryValues.opening_balance =
+              latestRecord.closing_balance || 0;
+            newAutoCarryValues.addins = 0; // Reset for new record
+            newAutoCarryValues.takeouts = 0; // Reset for new record
+
+            console.log("🔍 Auto-carry values calculated:", newAutoCarryValues);
+          } else {
+            console.log("🔍 No previous kits record found for this item");
+          }
+        } else if (tableName === "games_inventory") {
+          // Validate required fields before querying
+          if (!formData.game_details) {
+            console.log(
+              "🔍 Skipping games query - missing game_details:",
+              formData.game_details
+            );
+            return;
+          }
+
+          // For games inventory, get the latest record for the same game_details
+          console.log(
+            "🔍 Fetching games inventory data for item:",
+            formData.game_details
+          );
+
+          const { data, error } = await supabase
+            .from(tableName as any)
+            .select("*")
+            .eq("game_details", formData.game_details)
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          if (error) {
+            console.error("❌ Supabase error:", error);
+            throw error;
+          }
+
+          latestRecord = data?.[0];
+          console.log("🔍 Latest games record found:", latestRecord);
+
+          if (latestRecord) {
+            // Calculate the previous stock based on the latest record
+            const previousStock = latestRecord.previous_stock || 0;
+            const adding = latestRecord.adding || 0;
+            const sent = latestRecord.sent || 0;
+            const calculatedStock = previousStock + adding - sent;
+
+            newAutoCarryValues.previous_stock = calculatedStock;
+            newAutoCarryValues.addins = 0; // Reset for new record
+            newAutoCarryValues.sent = 0; // Reset for new record
+
+            console.log("🔍 Auto-carry values calculated:", newAutoCarryValues);
+          } else {
+            console.log("🔍 No previous games record found for this item");
+          }
+        } else if (tableName === "daily_expenses") {
+          // Validate required fields before querying
+          if (!formData.expense_category) {
+            console.log(
+              "🔍 Skipping expenses query - missing expense_category:",
+              formData.expense_category
+            );
+            return;
+          }
+
+          // For daily expenses, get the latest record for the same expense_category
+          console.log(
+            "🔍 Fetching daily expenses data for category:",
+            formData.expense_category
+          );
+
+          const { data, error } = await supabase
+            .from(tableName as any)
+            .select("*")
+            .eq("expense_category", formData.expense_category)
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          if (error) {
+            console.error("❌ Supabase error:", error);
+            throw error;
+          }
+
+          latestRecord = data?.[0];
+          console.log("🔍 Latest expenses record found:", latestRecord);
+
+          if (latestRecord) {
+            // Auto-carry the remaining_balance as fixed_amount for the new record
+            newAutoCarryValues.fixed_amount =
+              latestRecord.remaining_balance || 0;
+            newAutoCarryValues.expense_amount = 0; // Reset for new record
+
+            console.log("🔍 Auto-carry values calculated:", newAutoCarryValues);
+          } else {
+            console.log(
+              "🔍 No previous expenses record found for this category"
+            );
           }
         }
 
-        // Fallback: get from the main table
-        let query = (supabase as any).from(tableName).select("*");
+        console.log("🎯 Final auto-carry values to set:", newAutoCarryValues);
 
-        if (mapping.identifierField && idValue) {
-          query = query.eq(mapping.identifierField, idValue);
-        }
-
-        if (tableName === "blazer_inventory" && gender) {
-          query = query.eq("gender", gender);
-        }
-
-        const { data: tableData, error: tableError } = await query
-          .order("updated_at", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        if (tableError) throw tableError;
-
-        if (tableData && tableData.length > 0) {
-          const latestRecord = tableData[0];
-          const newAutoCarryValues: Record<string, any> = {};
-
-          mapping.stockFields.forEach((field) => {
-            if (
-              latestRecord[field] !== undefined &&
-              latestRecord[field] !== null
-            ) {
-              newAutoCarryValues[field] = latestRecord[field];
+        // Filter out fields that should preserve user input
+        const fieldsToPreserve = [
+          "item_name",
+          "expense_category",
+          "gender",
+          "size",
+        ];
+        const filteredAutoCarryValues = Object.keys(newAutoCarryValues).reduce(
+          (acc, key) => {
+            if (!fieldsToPreserve.includes(key)) {
+              acc[key] = newAutoCarryValues[key];
+            } else {
+              console.log(`🔄 Skipping auto-carry for preserved field: ${key}`);
             }
-          });
+            return acc;
+          },
+          {} as Record<string, any>
+        );
 
-          setAutoCarryValues(newAutoCarryValues);
+        if (Object.keys(filteredAutoCarryValues).length > 0) {
+          setAutoCarryValues(filteredAutoCarryValues);
+          console.log(
+            "✅ Auto-carry values set successfully:",
+            filteredAutoCarryValues
+          );
         } else {
-          setAutoCarryValues({});
+          console.log("ℹ️ No auto-carry values to set after filtering");
         }
       } catch (error) {
-        console.error("Error fetching previous stock:", error);
-        setAutoCarryValues({});
+        console.error("❌ Error in fetchPreviousStock:", error);
+      } finally {
+        console.log("🏁 fetchPreviousStock COMPLETED");
+        isProcessingRef.current = false; // Reset processing flag
       }
     },
-    [tableName, shouldFetch]
+    [tableName] // ✅ THE FIX: Only depend on tableName, not empty array
   );
 
-  // Trigger fetch only when key inputs change (avoid spamming on every keystroke)
+  // 🚀 THE COMPLETE SOLUTION: Use stable identifiers to prevent unnecessary re-runs
   useEffect(() => {
-    if (!tableName) return;
-    const key = JSON.stringify({ tableName, identifierValue, genderValue });
-    if (lastKeyRef.current === key) return;
-    lastKeyRef.current = key;
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
-    fetchPreviousStock(identifierValue, genderValue).finally(() => {
-      inFlightRef.current = false;
-    });
-  }, [tableName, identifierValue, genderValue, fetchPreviousStock]);
+    if (!tableName || !triggerValue || isProcessingRef.current) return;
+
+    console.log("🔍 useAutoCarryStock useEffect - triggerValue:", triggerValue);
+    console.log("🔍 useAutoCarryStock useEffect - tableName:", tableName);
+
+    // Clear any existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // For kits, games, and expenses, add debouncing to avoid too many requests
+    if (
+      ["kits_inventory", "games_inventory", "daily_expenses"].includes(
+        tableName
+      )
+    ) {
+      console.log("🔍 Debouncing auto-carry for", tableName, "(300ms delay)");
+      debounceTimeoutRef.current = setTimeout(() => {
+        console.log("🔍 Triggering auto-carry fetch (debounced)");
+        // Pass current values to prevent stale closure issues
+        fetchPreviousStock(tableName, formData, triggerValue);
+      }, 300);
+    } else {
+      // For blazer inventory, trigger immediately
+      console.log("🔍 Triggering auto-carry fetch (immediate)");
+      fetchPreviousStock(tableName, formData, triggerValue);
+    }
+
+    // Cleanup timeout on unmount or when dependencies change
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, [
+    tableName,
+    triggerValue, // 🎯 Only this dependency changes when field values actually change
+    fetchPreviousStock,
+  ]); // Removed formData dependency to prevent loops
 
   return {
     autoCarryValues,

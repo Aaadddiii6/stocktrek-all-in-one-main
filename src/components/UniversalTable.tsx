@@ -52,23 +52,32 @@ export function UniversalTable({
     if (!isValidModule || !isValidFields) return;
 
     try {
+      console.log(
+        `🔄 Fetching records for ${moduleName} from table: ${tableName}`
+      );
       setLoading(true);
-      const { data, error } = await supabase
-        .from(tableName)
+      const { data, error } = await (supabase as any)
+        .from(tableName as any)
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error(`❌ Error fetching records for ${moduleName}:`, error);
+        throw error;
+      }
+
+      console.log(`✅ Fetched ${data?.length || 0} records for ${moduleName}`);
+      console.log(`📊 Sample record:`, data?.[0]);
 
       setRecords(data || []);
       setFilteredRecords(data || []);
     } catch (error) {
-      console.error("Error fetching records:", error);
+      console.error(`❌ Error fetching records for ${moduleName}:`, error);
       toast.error("Failed to load records");
     } finally {
       setLoading(false);
     }
-  }, [tableName, isValidModule, isValidFields]);
+  }, [tableName, isValidModule, isValidFields, moduleName]);
 
   // Real-time updates
   useEffect(() => {
@@ -76,6 +85,13 @@ export function UniversalTable({
       fetchRecords();
     }
   }, [fetchRecords, isValidModule, isValidFields]);
+
+  // Enable real-time refresh for the table
+  useRealtimeRefresh({
+    table: tableName,
+    onRefresh: fetchRecords,
+    enabled: isValidModule && isValidFields,
+  });
 
   // Enhanced filtering logic to search across all visible searchable fields
   useEffect(() => {
@@ -113,8 +129,21 @@ export function UniversalTable({
     newValue: any
   ) => {
     try {
+      console.log(
+        `✏️ Attempting to update field: ${fieldName} for record: ${recordId}`
+      );
+
       const originalRecord = records.find((r) => r.id === recordId);
-      const oldValue = originalRecord?.[fieldName];
+      if (!originalRecord) {
+        console.error("❌ Record not found:", recordId);
+        toast.error("Record not found. Please refresh the page.");
+        setEditingRecord(null);
+        setEditingField(null);
+        return;
+      }
+
+      const oldValue = originalRecord[fieldName];
+      console.log("📝 Field update:", { fieldName, oldValue, newValue });
 
       // Auto-calculate computed fields for specific modules
       const updatedData: any = { [fieldName]: newValue };
@@ -132,7 +161,8 @@ export function UniversalTable({
           const addins = fieldName === "addins" ? newValue : record.addins || 0;
           const takeouts =
             fieldName === "takeouts" ? newValue : record.takeouts || 0;
-          updatedData.closing_balance = opening + addins - takeouts;
+          // Don't include closing_balance - it's computed automatically by the database
+          // updatedData.closing_balance = opening + addins - takeouts;
         }
       } else if (
         tableName === "games_inventory" &&
@@ -146,7 +176,21 @@ export function UniversalTable({
               : record.previous_stock || 0;
           const adding = fieldName === "adding" ? newValue : record.adding || 0;
           const sent = fieldName === "sent" ? newValue : record.sent || 0;
-          updatedData.in_stock = previous + adding - sent;
+          // Don't include in_stock - it's computed automatically by the database
+          // updatedData.in_stock = previous + adding - sent;
+        }
+      } else if (
+        tableName === "daily_expenses" &&
+        ["expenses", "fixed_amount"].includes(fieldName)
+      ) {
+        const record = records.find((r) => r.id === recordId);
+        if (record) {
+          const expenses =
+            fieldName === "expenses" ? newValue : record.expenses || 0;
+          const fixedAmount =
+            fieldName === "fixed_amount" ? newValue : record.fixed_amount || 0;
+          // Don't include total - it's computed automatically by the database
+          // updatedData.total = expenses + fixedAmount;
         }
       } else if (
         tableName === "books_distribution" &&
@@ -175,19 +219,46 @@ export function UniversalTable({
             const value = field === fieldName ? newValue : record[field] || 0;
             total += parseInt(value) || 0;
           });
-          updatedData.total_used_till_now = total;
+          // Don't include total_used_till_now - it's computed automatically by the database
+          // updatedData.total_used_till_now = total;
         }
       }
 
-      const { error } = await (supabase as any)
-        .from(tableName)
-        .update(updatedData)
-        .eq("id", recordId);
+      // Remove any computed columns from the update data
+      if (tableName === "kits_inventory") {
+        delete updatedData.closing_balance;
+      } else if (tableName === "games_inventory") {
+        delete updatedData.in_stock;
+      } else if (tableName === "daily_expenses") {
+        delete updatedData.total;
+      } else if (tableName === "books_distribution") {
+        delete updatedData.total_used_till_now;
+      }
 
-      if (error) throw error;
+      console.log("📦 Sending update data:", updatedData);
+
+      const { error, data } = await (supabase as any)
+        .from(tableName as any)
+        .update(updatedData)
+        .eq("id", recordId)
+        .select();
+
+      if (error) {
+        console.error("❌ Update error:", error);
+        throw error;
+      }
+
+      console.log("✅ Update successful:", data);
 
       // Update local state
       setRecords((prev) =>
+        prev.map((record) =>
+          record.id === recordId ? { ...record, ...updatedData } : record
+        )
+      );
+
+      // Also update filtered records to maintain search consistency
+      setFilteredRecords((prev) =>
         prev.map((record) =>
           record.id === recordId ? { ...record, ...updatedData } : record
         )
@@ -213,8 +284,8 @@ export function UniversalTable({
 
       toast.success("Field updated successfully");
     } catch (error) {
-      console.error("Error updating field:", error);
-      toast.error("Failed to update field");
+      console.error("❌ Error updating field:", error);
+      toast.error("Failed to update field. Please try again.");
     }
   };
 
@@ -228,12 +299,60 @@ export function UniversalTable({
       return;
 
     try {
-      const { error } = await (supabase as any)
-        .from(tableName)
-        .delete()
+      console.log(`🗑️ Attempting to delete ${moduleName} record:`, record.id);
+
+      // First, let's check if the record actually exists
+      console.log(`🔍 Checking if record exists before deletion...`);
+      const { data: checkData, error: checkError } = await (supabase as any)
+        .from(tableName as any)
+        .select("id")
         .eq("id", record.id);
 
-      if (error) throw error;
+      console.log(`🔍 Record check response:`, { checkData, checkError });
+
+      if (checkError) {
+        console.error(`❌ Error checking record existence:`, checkError);
+        throw checkError;
+      }
+
+      if (!checkData || checkData.length === 0) {
+        console.error(`❌ Record not found in database:`, record.id);
+        throw new Error(`Record with ID ${record.id} not found in database`);
+      }
+
+      console.log(`✅ Record found, proceeding with deletion...`);
+
+      const { error, data, count } = await (supabase as any)
+        .from(tableName as any)
+        .delete()
+        .eq("id", record.id)
+        .select();
+
+      console.log(`🗑️ Delete response:`, { error, data, count });
+
+      if (error) {
+        console.error(`❌ Delete error for ${moduleName}:`, error);
+        console.error(`❌ Error details:`, {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        throw error;
+      }
+
+      // Check if any rows were actually affected
+      if (!data || data.length === 0) {
+        console.warn(
+          `⚠️ Delete operation returned no affected rows for ${moduleName}`
+        );
+        throw new Error("No rows were deleted from the database");
+      }
+
+      console.log(
+        `✅ Delete successful for ${moduleName}, deleted rows:`,
+        data
+      );
 
       const recordData: Record<string, any> = {};
       visibleFields.forEach((field) => {
@@ -243,10 +362,35 @@ export function UniversalTable({
       await logSuccess(moduleName, "DELETE", recordData, record.id);
 
       toast.success(`${moduleName} record deleted successfully`);
-      fetchRecords();
+
+      console.log(`🔄 Updating local state for ${moduleName}...`);
+      console.log(`📊 Records before deletion:`, records.length);
+
+      // Update local state immediately for better UX
+      setRecords((prev) => {
+        const newRecords = prev.filter((r) => r.id !== record.id);
+        console.log(`📊 Records after deletion:`, newRecords.length);
+        return newRecords;
+      });
+
+      setFilteredRecords((prev) => {
+        const newFiltered = prev.filter((r) => r.id !== record.id);
+        console.log(`📊 Filtered records after deletion:`, newFiltered.length);
+        return newFiltered;
+      });
+
+      console.log(`🔄 Fetching fresh data for ${moduleName}...`);
+      // Also fetch fresh data to ensure consistency
+      try {
+        await fetchRecords();
+        console.log(`✅ Fresh data fetched successfully`);
+      } catch (fetchError) {
+        console.error(`❌ Error fetching fresh data:`, fetchError);
+      }
+
       onDataChange();
     } catch (error: any) {
-      console.error(`Error deleting ${moduleName} record:`, error);
+      console.error(`❌ Error deleting ${moduleName} record:`, error);
       await logError(moduleName, "DELETE", error, record);
       toast.error(`Failed to delete ${moduleName} record`);
     }

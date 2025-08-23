@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ModuleActivityLogs } from "@/components/ModuleActivityLogs";
-import { AddBookRecordModal } from "@/components/AddBookRecordModal";
+import { AddRecordModal } from "@/components/AddRecordModal";
 import { BookOpen, Plus, TrendingUp, GraduationCap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh";
@@ -272,14 +272,14 @@ export default function BooksDistribution() {
       </div>
 
       {/* Add Record Modal */}
-      <AddBookRecordModal
+      <AddRecordModal
         open={isAddModalOpen}
         onOpenChange={setIsAddModalOpen}
         onSuccess={() => {
           setIsAddModalOpen(false);
-          fetchBooksStats();
           fetchBooksData();
         }}
+        defaultModuleType="books"
       />
     </>
   );
