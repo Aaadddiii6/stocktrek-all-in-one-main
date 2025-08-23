@@ -140,15 +140,68 @@ export function UniversalModulePage({ moduleName }: UniversalModulePageProps) {
           ) || 0;
         moduleSpecificStats = { distributed, stockAvailable };
       } else if (moduleName === "daily_expenses") {
+        // Get current month data
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const currentMonthData =
+          data?.filter((item) => {
+            const itemMonth = new Date(item.date).toISOString().slice(0, 7);
+            return itemMonth === currentMonth;
+          }) || [];
+
+        // Calculate total expenses (all time) and current month expenses
         const totalExpenses =
           data?.reduce((sum, item) => sum + (Number(item.expenses) || 0), 0) ||
           0;
-        const latestFixedAmount = data?.[0]?.fixed_amount || 0; // data is ordered by created_at desc
-        const remainingBalance = latestFixedAmount + totalExpenses;
-        moduleSpecificStats = {
+
+        const currentMonthExpenses = currentMonthData.reduce(
+          (sum, item) => sum + (Number(item.expenses) || 0),
+          0
+        );
+
+        // Sum all fixed amounts for current month (not just latest)
+        const totalFixedAmount = currentMonthData
+          .filter((item) => item.fixed_amount && Number(item.fixed_amount) > 0)
+          .reduce((sum, item) => sum + Number(item.fixed_amount), 0);
+
+        // Get previous month carryover from first record with value
+        const previousMonthCarryover = (() => {
+          for (const record of currentMonthData) {
+            if (
+              record.previous_month_overspend != null &&
+              record.previous_month_overspend !== 0
+            ) {
+              return Number(record.previous_month_overspend);
+            }
+          }
+          return 0;
+        })();
+
+        // Calculate adjusted fixed amount and remaining balance
+        const adjustedFixedAmount = totalFixedAmount - previousMonthCarryover;
+        const remainingBalance = adjustedFixedAmount - currentMonthExpenses;
+
+        console.log("🔍 Daily Expenses Stats Calculation:", {
+          currentMonthData: currentMonthData.map((r) => ({
+            id: r.id,
+            date: r.date,
+            fixed_amount: r.fixed_amount,
+            expenses: r.expenses,
+            previous_month_overspend: r.previous_month_overspend,
+          })),
+          totalFixedAmount,
+          previousMonthCarryover,
+          adjustedFixedAmount,
           totalExpenses,
-          fixedAmount: latestFixedAmount,
+          currentMonthExpenses,
           remainingBalance,
+        });
+
+        moduleSpecificStats = {
+          totalExpenses: currentMonthExpenses, // Show current month expenses in the card
+          fixedAmount: totalFixedAmount,
+          remainingBalance,
+          previousMonthCarryover,
+          currentMonthEntries: currentMonthData.length, // Number of entries this month
         };
       } else if (moduleName === "courier_tracking") {
         const dispatched =
@@ -264,15 +317,32 @@ export function UniversalModulePage({ moduleName }: UniversalModulePageProps) {
         }
       );
     } else if (moduleName === "daily_expenses") {
+      // For daily expenses, replace default cards with specific ones
+      cards.length = 0; // Clear the default cards
       cards.push(
         {
-          title: "Total Expenses",
+          title: "This Month Entries",
+          value: stats.currentMonthEntries || 0,
+          icon: IconComponent,
+        },
+        {
+          title: "This Month Expenses",
           value: `₹${stats.totalExpenses?.toFixed(2) || "0.00"}`,
           icon: IconComponent,
         },
         {
-          title: "Remaining Balance",
+          title: "This Month Fixed Amount",
+          value: `₹${stats.fixedAmount?.toFixed(2) || "0.00"}`,
+          icon: IconComponent,
+        },
+        {
+          title: "Current Balance",
           value: `₹${stats.remainingBalance?.toFixed(2) || "0.00"}`,
+          icon: IconComponent,
+        },
+        {
+          title: "Previous Month Carryover",
+          value: `₹${stats.previousMonthCarryover?.toFixed(2) || "0.00"}`,
           icon: IconComponent,
         }
       );

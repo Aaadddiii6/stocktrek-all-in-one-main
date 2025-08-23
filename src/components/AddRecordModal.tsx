@@ -110,19 +110,22 @@ const FIELD_CONFIGS = {
   ],
   expenses: [
     { name: "date", label: "Date", type: "date", required: true },
-    {
-      name: "expense_category",
-      label: "Expense Category",
-      type: "select",
-      required: true,
-      options: ["Transport", "Food", "Stationary", "Other"],
-    },
     { name: "expenses", label: "Expenses", type: "number", required: true },
     {
-      name: "fixed_amount",
-      label: "Fixed Amount",
+      name: "previous_month_overspend",
+      label: "Previous Month Carryover",
       type: "number",
-      required: true,
+      required: false,
+      placeholder:
+        "Amount from previous month (positive = overspend, negative = underspend)",
+    },
+    {
+      name: "fixed_amount",
+      label: "Fixed Amount (Optional)",
+      type: "number",
+      required: false,
+      placeholder:
+        "Add fixed amount for this month (only needed for initial setup or top-ups)",
     },
     { name: "remarks", label: "Remarks", type: "text", required: true },
   ],
@@ -276,6 +279,10 @@ export function AddRecordModal({
   const [gameNames, setGameNames] = useState<string[]>([]);
   const [isLoadingGames, setIsLoadingGames] = useState(false);
 
+  // State to track if user wants to add a new item
+  const [isAddingNewKit, setIsAddingNewKit] = useState(false);
+  const [isAddingNewGame, setIsAddingNewGame] = useState(false);
+
   useEffect(() => {
     if (moduleType === "kits") {
       fetchKitNames();
@@ -343,6 +350,10 @@ export function AddRecordModal({
 
   const handleModuleTypeChange = (value: string) => {
     setModuleType(value);
+    // Reset "Add New" states when changing module type
+    setIsAddingNewKit(false);
+    setIsAddingNewGame(false);
+
     // Set default values for kits when switching to kits module
     if (value === "kits") {
       setFormData({
@@ -351,6 +362,12 @@ export function AddRecordModal({
       });
       console.log(
         "🔍 Module type changed to kits - initialized with default values (addins: 0, takeouts: 0)"
+      );
+    } else if (value === "expenses") {
+      // For expenses, fixed amount field is always visible
+      setFormData({});
+      console.log(
+        "🔍 Module type changed to expenses - fixed amount field always visible"
       );
     } else {
       // Don't reset form data completely - preserve user input for other modules
@@ -415,6 +432,12 @@ export function AddRecordModal({
         console.log(
           "🔍 AddRecordModal - Kits form initialized with default values (addins: 0, takeouts: 0)"
         );
+      } else if (defaultModuleType === "expenses") {
+        // For expenses, fixed amount field is always visible
+        setFormData({});
+        console.log(
+          "🔍 AddRecordModal - Expenses form initialized - fixed amount field always visible"
+        );
       } else {
         setFormData({});
       }
@@ -433,6 +456,8 @@ export function AddRecordModal({
     if (!open) {
       setFormData({});
       setModuleType("");
+      setIsAddingNewKit(false);
+      setIsAddingNewGame(false);
       console.log("🔍 AddRecordModal - Modal closed, form reset");
     }
   }, [open]);
@@ -506,6 +531,7 @@ export function AddRecordModal({
         delete insertData.total;
         // Remove opening_balance - it doesn't exist in daily_expenses table
         delete insertData.opening_balance;
+        // Remove internal form management fields (no longer needed)
 
         // Log the cleaned data for debugging
         console.log("🧹 Daily expenses data after cleaning:", insertData);
@@ -640,7 +666,14 @@ export function AddRecordModal({
 
       console.log("🎉 Record creation successful!");
       console.log("🔍 About to close modal and reset form...");
-      toast.success("Record added successfully");
+
+      // Show success message
+      if (moduleType === "expenses") {
+        toast.success("Expense added successfully!");
+      } else {
+        toast.success("Record added successfully");
+      }
+
       onOpenChange(false);
       console.log("🔍 Modal closed, resetting form state...");
       setModuleType("");
@@ -652,6 +685,12 @@ export function AddRecordModal({
         });
         console.log(
           "🔍 Kits form reset with default values (addins: 0, takeouts: 0)"
+        );
+      } else if (moduleType === "expenses") {
+        // For expenses, fixed amount field is always visible
+        setFormData({});
+        console.log(
+          "🔍 Expenses form reset - fixed amount field always visible"
         );
       } else {
         setFormData({});
@@ -667,12 +706,27 @@ export function AddRecordModal({
     }
   };
 
+  // Smart form logic for expenses - determine if fixed amount field should be shown
+  const shouldShowFixedAmountField = () => {
+    if (moduleType !== "expenses") return true;
+
+    // For expenses, ALWAYS show fixed_amount field
+    // It's optional but should be visible by default for better UX
+    return true;
+  };
+
+  // Balance calculation and current month data removed - now handled in dashboard cards
+
+  // Balance update function removed - now handled in dashboard cards
+
   const renderField = (field: any) => {
     const value = formData[field.name] || "";
     // Make all fields editable by default
     const isDisabled = false;
     const showAutoCarryNote =
       shouldAutoCarry(field.name) && autoCarryValues[field.name] !== undefined;
+
+    // Fixed amount field is now always visible for expenses
 
     switch (field.type) {
       case "text":
@@ -706,6 +760,16 @@ export function AddRecordModal({
                   Leave empty to use default value of 0
                 </p>
               )}
+
+            {/* Show helpful text for expenses fields */}
+            {field.name === "previous_month_overspend" &&
+              moduleType === "expenses" && (
+                <p className="text-sm text-muted-foreground">
+                  Enter positive amount if you overspent last month, negative if
+                  you had money left
+                </p>
+              )}
+
             {/* Auto-carry text hidden but functionality preserved */}
             {/* {showAutoCarryNote && (
               <p className="text-sm text-muted-foreground">
@@ -732,6 +796,108 @@ export function AddRecordModal({
         );
 
       case "select":
+        // Handle special case for kits and games with "Add New" option
+        if (
+          (field.name === "item_name" && moduleType === "kits") ||
+          (field.name === "game_details" && moduleType === "games")
+        ) {
+          const isAddingNew =
+            field.name === "item_name" ? isAddingNewKit : isAddingNewGame;
+          const setIsAddingNew =
+            field.name === "item_name" ? setIsAddingNewKit : setIsAddingNewGame;
+          const existingOptions =
+            field.name === "item_name" ? kitNames : gameNames;
+
+          return (
+            <div key={`${moduleType}-${field.name}`} className="space-y-2">
+              <Label htmlFor={field.name}>
+                {field.label}{" "}
+                {field.required && <span className="text-destructive">*</span>}
+              </Label>
+
+              {isAddingNew ? (
+                // Show text input when adding new item
+                <div className="space-y-2">
+                  <Input
+                    id={field.name}
+                    type="text"
+                    value={value}
+                    onChange={(e) =>
+                      handleFieldChange(field.name, e.target.value)
+                    }
+                    placeholder={`Enter new ${
+                      field.name === "item_name" ? "kit" : "game"
+                    } name`}
+                    required={field.required}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsAddingNew(false);
+                      handleFieldChange(field.name, "");
+                    }}
+                    className="text-xs"
+                  >
+                    ← Back to dropdown
+                  </Button>
+                </div>
+              ) : (
+                // Show dropdown with existing options + "Add New" option
+                <Select
+                  value={value}
+                  onValueChange={(val) => {
+                    if (val === "ADD_NEW") {
+                      setIsAddingNew(true);
+                      handleFieldChange(field.name, "");
+                    } else {
+                      handleFieldChange(field.name, val);
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={`Select ${field.label}`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Add "Add New" option at the top */}
+                    <SelectItem
+                      key="ADD_NEW"
+                      value="ADD_NEW"
+                      className="font-medium text-blue-600"
+                    >
+                      ➕ Add New {field.name === "item_name" ? "Kit" : "Game"}
+                    </SelectItem>
+
+                    {/* Separator */}
+                    {existingOptions.length > 0 && (
+                      <div className="px-2 py-1 text-xs text-muted-foreground border-b">
+                        Existing {field.name === "item_name" ? "Kits" : "Games"}
+                        :
+                      </div>
+                    )}
+
+                    {/* Existing options */}
+                    {existingOptions.map((option: string) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+
+                    {existingOptions.length === 0 && (
+                      <div className="px-2 py-1 text-xs text-muted-foreground">
+                        No existing{" "}
+                        {field.name === "item_name" ? "kits" : "games"} found
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          );
+        }
+
+        // Default select field for other cases
         return (
           <div key={`${moduleType}-${field.name}`} className="space-y-2">
             <Label htmlFor={field.name}>
@@ -750,10 +916,6 @@ export function AddRecordModal({
                   ? formData.gender === "Male"
                     ? field.options?.filter((o: string) => o.startsWith("M-"))
                     : field.options?.filter((o: string) => o.startsWith("F-"))
-                  : field.name === "item_name" && moduleType === "kits"
-                  ? kitNames
-                  : field.name === "game_details" && moduleType === "games"
-                  ? gameNames
                   : field.options
                 )?.map((option: string) => (
                   <SelectItem key={option} value={option}>
@@ -870,6 +1032,9 @@ export function AddRecordModal({
                   renderField
                 )}
               </div>
+
+              {/* Balance preview removed - now shown in top dashboard cards */}
+
               {/* Removed Enter key tip - using simple debounced approach */}
             </div>
           )}
