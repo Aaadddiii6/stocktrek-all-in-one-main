@@ -647,14 +647,73 @@ export function AddRecordModal({
         console.log("📊 Insert result:", insertResult);
       }
 
-      // Also insert into activity logs for tracking
+      // Also insert into activity logs with a helpful summary
       console.log("📝 Logging activity...");
+
+      const insertedRecord = Array.isArray(insertResult)
+        ? insertResult[0]
+        : undefined;
+      const recordId = insertedRecord?.id;
+
+      const moduleDisplayNames: Record<string, string> = {
+        blazer_inventory: "Blazer Inventory",
+        kits_inventory: "Kits Inventory",
+        games_inventory: "Games Inventory",
+        daily_expenses: "Daily Expenses",
+        books_distribution: "Books Distribution",
+        courier_tracking: "Courier Tracking",
+      };
+
+      // Build a concise summary per module
+      let summary = "Record Added Successfully";
+      if (tableName === "kits_inventory") {
+        summary = `Added kit "${insertData.item_name || "Unknown"}" on ${
+          insertData.date || "-"
+        } (Opening: ${insertData.opening_balance ?? 0}, Add-ins: ${
+          insertData.addins ?? 0
+        }, Take-outs: ${insertData.takeouts ?? 0})`;
+      } else if (tableName === "games_inventory") {
+        summary = `Added game "${insertData.game_details || "Unknown"}" on ${
+          insertData.date || "-"
+        } (Prev: ${insertData.previous_stock ?? 0}, Adding: ${
+          insertData.adding ?? 0
+        }, Sent: ${insertData.sent ?? 0})`;
+      } else if (tableName === "blazer_inventory") {
+        const displaySize = (insertData.size || "")
+          .toString()
+          .replace("F-", "")
+          .replace("M-", "");
+        summary = `Added ${insertData.quantity ?? 0} ${
+          insertData.gender || ""
+        } ${displaySize} blazers`;
+      } else if (tableName === "daily_expenses") {
+        summary = `Expense entry on ${insertData.date || "-"} (Expenses: ₹${
+          insertData.expenses ?? 0
+        }, Fixed: ₹${insertData.fixed_amount ?? 0})`;
+      } else if (tableName === "courier_tracking") {
+        summary = `Courier ${insertData.status || "Dispatched"} - ${
+          insertData.name || "Unknown"
+        } (${insertData.tracking_number || "No Tracking"})`;
+      } else if (tableName === "books_distribution") {
+        summary = `Books distribution for ${
+          insertData.school_name || "Unknown"
+        } (${insertData.kit_type || "Kit"})`;
+      }
+
       const { error: activityError } = await supabase
         .from("activity_logs")
         .insert({
           user_id: user.id,
           module_type: tableName,
-          data: formData,
+          data: {
+            module_name: moduleDisplayNames[tableName] || tableName,
+            action: "CREATE_SUCCESS",
+            summary,
+            record_id: recordId,
+            record_data: insertData,
+            timestamp: new Date().toISOString(),
+            user_email: user.email,
+          },
         });
 
       if (activityError) {

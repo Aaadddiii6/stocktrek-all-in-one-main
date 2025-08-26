@@ -43,10 +43,14 @@ export default function BlazerInventory() {
 
       blazerData.forEach((item) => {
         const key = `${item.size}-${item.gender}`;
+        // Use updated_at to reflect inline edits immediately
         if (
           !latestInventory.has(key) ||
-          new Date(item.created_at) >
-            new Date(latestInventory.get(key).created_at)
+          new Date(item.updated_at || item.created_at) >
+            new Date(
+              latestInventory.get(key).updated_at ||
+                latestInventory.get(key).created_at
+            )
         ) {
           latestInventory.set(key, item);
         }

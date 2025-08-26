@@ -266,7 +266,7 @@ export function UniversalTable({
 
       // Log the activity
       await logSuccess(
-        moduleName,
+        tableName,
         "UPDATE",
         {
           field: fieldName,
@@ -391,7 +391,7 @@ export function UniversalTable({
       onDataChange();
     } catch (error: any) {
       console.error(`❌ Error deleting ${moduleName} record:`, error);
-      await logError(moduleName, "DELETE", error, record);
+      await logError(tableName, "DELETE", error, record);
       toast.error(`Failed to delete ${moduleName} record`);
     }
   };
