@@ -137,6 +137,13 @@ const FIELD_CONFIGS = {
       options: ["Male", "Female"],
       required: true,
     },
+    {
+      name: "transaction_type",
+      label: "Transaction Type",
+      type: "select",
+      options: ["Received (+)", "Sent (-)"],
+      required: true,
+    },
     // UI options should map to DB enums; we keep simple labels and map before insert
     {
       name: "size",
@@ -175,15 +182,20 @@ const FIELD_CONFIGS = {
       required: true,
       options: [],
     },
-    { name: "date", label: "Date", type: "date", required: true },
     {
       name: "previous_stock",
       label: "Previous Stock",
       type: "number",
       required: true,
     },
-    { name: "adding", label: "Adding", type: "number", required: true },
-    { name: "sent", label: "Sent", type: "number", required: true },
+    { name: "adding", label: "Adding", type: "number", required: false },
+    { name: "sent", label: "Sent", type: "number", required: false },
+    {
+      name: "current_stock",
+      label: "Current Stock",
+      type: "number",
+      required: false,
+    },
     { name: "sent_by", label: "Sent By", type: "text" },
   ],
   books: [
@@ -469,7 +481,44 @@ export function AddRecordModal({
     console.log(`🔍 Form data before change:`, formData);
 
     setFormData((prev) => {
-      const updated = { ...prev, [fieldName]: value };
+      const updated: Record<string, any> = { ...prev, [fieldName]: value };
+
+      // Blazer auto-calc: compute post-entry in_office_stock from previous stock and quantity
+      if (moduleType === "blazer") {
+        const prevStock = Number(
+          updated._prev_in_office_stock ?? updated.in_office_stock ?? 0
+        );
+        const qty = Number(
+          fieldName === "quantity" ? value : updated.quantity ?? 0
+        );
+        const tx = String(updated.transaction_type || "");
+        if (!Number.isNaN(prevStock) && !Number.isNaN(qty) && qty >= 0) {
+          if (tx === "Sent (-)") {
+            updated.in_office_stock = Math.max(0, prevStock - qty);
+          } else if (tx === "Received (+)") {
+            updated.in_office_stock = prevStock + qty;
+          }
+        }
+      }
+
+      // Games auto-calc: live current_stock from previous_stock + adding - sent
+      if (moduleType === "games") {
+        const previous = Number(
+          fieldName === "previous_stock" ? value : updated.previous_stock ?? 0
+        );
+        const adding = Number(
+          fieldName === "adding" ? value : updated.adding ?? 0
+        );
+        const sent = Number(fieldName === "sent" ? value : updated.sent ?? 0);
+        if (
+          !Number.isNaN(previous) &&
+          !Number.isNaN(adding) &&
+          !Number.isNaN(sent)
+        ) {
+          updated.current_stock = previous + adding - sent;
+        }
+      }
+
       console.log(`🔍 Form data after change:`, updated);
       console.log(`🔍 item_name after change:`, updated.item_name);
       return updated;
@@ -520,8 +569,17 @@ export function AddRecordModal({
 
       // Handle special cases for different modules
       if (moduleType === "blazer") {
-        // Add gender field for blazers (default to 'Male' if not specified)
+        // Normalize blazer fields
         insertData.gender = insertData.gender || "Male";
+        // Map transaction_type to sign and drop helper fields
+        if (
+          insertData.transaction_type &&
+          insertData._prev_in_office_stock !== undefined
+        ) {
+          // in_office_stock already computed in form change handler
+          delete insertData._prev_in_office_stock;
+        }
+        delete insertData.transaction_type;
       }
 
       if (moduleType === "expenses") {
@@ -572,6 +630,28 @@ export function AddRecordModal({
       if (moduleType === "games") {
         // DB computes in_stock; do not send it
         delete insertData.in_stock;
+        // Normalize blanks and strings like '-' to numbers
+        if (insertData.adding === "" || insertData.adding === "-")
+          insertData.adding = 0;
+        if (insertData.sent === "" || insertData.sent === "-")
+          insertData.sent = 0;
+        if (
+          insertData.previous_stock === "" ||
+          insertData.previous_stock === "-"
+        )
+          insertData.previous_stock = 0;
+        // Some flows may still carry kits' 'addins' field — map it to 'adding'
+        if (
+          (insertData.adding === undefined || insertData.adding === null) &&
+          insertData.addins !== undefined
+        ) {
+          insertData.adding = Number(insertData.addins) || 0;
+        }
+        delete insertData.addins;
+        // current_stock is a UI-only computed field
+        delete insertData.current_stock;
+        // Ensure we don't accidentally send a date column if it doesn't exist
+        delete insertData.date;
         // Remove in_office_stock - it doesn't exist in games_inventory table
         delete insertData.in_office_stock;
 
@@ -800,16 +880,24 @@ export function AddRecordModal({
               id={field.name}
               type={field.type}
               value={value}
-              onChange={(e) =>
-                handleFieldChange(
-                  field.name,
-                  field.type === "number"
-                    ? Number(e.target.value)
-                    : e.target.value
-                )
-              }
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (field.type === "number") {
+                  // Allow '', '-' while typing; convert to number only when valid
+                  if (raw === "" || raw === "-") {
+                    handleFieldChange(field.name, raw);
+                  } else {
+                    handleFieldChange(field.name, Number(raw));
+                  }
+                } else {
+                  handleFieldChange(field.name, raw);
+                }
+              }}
               required={field.required}
-              disabled={isDisabled}
+              disabled={
+                isDisabled ||
+                (moduleType === "games" && field.name === "current_stock")
+              }
               placeholder={field.placeholder}
             />
             {/* Show helpful text for addins/takeouts fields */}

@@ -94,7 +94,12 @@ export function BlazerInventoryTable({
   ) => {
     setEditingRecord(recordId);
     setEditingField(fieldName);
-    setEditValue(currentValue);
+    // Preserve raw text for numeric fields to allow intermediate '-' while typing
+    if (fieldName === "quantity" || fieldName === "in_office_stock") {
+      setEditValue(String(currentValue ?? ""));
+    } else {
+      setEditValue(currentValue);
+    }
   };
 
   const handleFieldSave = async (
@@ -102,6 +107,17 @@ export function BlazerInventoryTable({
     fieldName: string,
     newValue: any
   ) => {
+    // Virtual fields mapping for added/sent
+    if (fieldName === "added" || fieldName === "sent") {
+      const numeric = Number(newValue);
+      if (isNaN(numeric) || numeric < 0) {
+        toast.error("Value must be a non-negative number");
+        return;
+      }
+      const signed = fieldName === "added" ? numeric : -numeric;
+      await handleFieldSave(recordId, "quantity", signed);
+      return;
+    }
     let originalRecord: BlazerRecord | undefined;
 
     try {
@@ -124,7 +140,75 @@ export function BlazerInventoryTable({
       console.log("📝 Field update:", { fieldName, oldValue, newValue });
 
       // Prepare update data
-      const updatedData: any = { [fieldName]: newValue };
+      // Parse numeric strings safely (allow '-', '', etc.)
+      let parsedValue: any = newValue;
+      if (fieldName === "quantity" || fieldName === "in_office_stock") {
+        if (typeof newValue === "string") {
+          if (newValue.trim() === "" || newValue === "-") {
+            // Do not save until a valid number; keep editing state
+            setEditValue(newValue);
+            return;
+          }
+          parsedValue = Number(newValue);
+        }
+      }
+
+      const updatedData: any = { [fieldName]: parsedValue };
+
+      // If quantity changes, also recompute in_office_stock based on previous snapshot
+      if (fieldName === "quantity") {
+        // Find previous row for same gender+size (older snapshot)
+        const currentIndex = filteredRecords.findIndex(
+          (r) => r.id === recordId
+        );
+        const previousSameBucket =
+          currentIndex !== -1
+            ? filteredRecords
+                .slice(currentIndex + 1)
+                .find(
+                  (r) =>
+                    r.gender === originalRecord!.gender &&
+                    r.size === originalRecord!.size
+                )
+            : undefined;
+
+        if (previousSameBucket) {
+          const prevStock = Number(previousSameBucket.in_office_stock || 0);
+          const qtyNum = Number(parsedValue || 0);
+          // Direct sign support: negative = used, positive = received
+          const newStock = Math.max(0, prevStock + qtyNum);
+          updatedData.in_office_stock = newStock;
+          // Preserve sign as entered so UI can reflect +/-
+          updatedData.quantity = qtyNum;
+          console.log(
+            "🔄 Recalculated in_office_stock from quantity edit (signed):",
+            {
+              prevStock,
+              qtyNum,
+              newStock,
+            }
+          );
+        } else {
+          // No previous snapshot visible (newest row). Use current row's stock as baseline and delta vs old qty
+          const base = Number(originalRecord.in_office_stock || 0);
+          const oldQty = Number(originalRecord.quantity || 0);
+          const qtyNum = Number(parsedValue || 0);
+          const delta = qtyNum - oldQty; // supports negative
+          const newStock = Math.max(0, base + delta);
+          updatedData.in_office_stock = newStock;
+          updatedData.quantity = qtyNum;
+          console.log(
+            "🔄 Recalculated in_office_stock (no previous row, signed):",
+            {
+              base,
+              oldQty,
+              qtyNum,
+              delta,
+              newStock,
+            }
+          );
+        }
+      }
 
       // Handle special cases
       if (fieldName === "size") {
@@ -135,16 +219,37 @@ export function BlazerInventoryTable({
         } else if (gender === "Female" && !newValue.startsWith("F-")) {
           updatedData.size = `F-${newValue}`;
         }
+      } else if (fieldName === "gender") {
+        // When gender changes, ensure size prefix matches the new gender
+        const lettersOnly = (originalRecord.size || "")
+          .toString()
+          .replace("F-", "")
+          .replace("M-", "");
+        if (newValue === "Male") {
+          updatedData.gender = "Male";
+          updatedData.size = `M-${lettersOnly}`;
+        } else if (newValue === "Female") {
+          updatedData.gender = "Female";
+          updatedData.size = `F-${lettersOnly}`;
+        }
       }
 
-      // Validate the data before sending
-      if (fieldName === "quantity" || fieldName === "in_office_stock") {
-        const numValue = Number(newValue);
-        if (isNaN(numValue) || numValue < 0) {
-          toast.error(`${fieldName} must be a positive number`);
+      // Validate numeric fields
+      if (fieldName === "quantity") {
+        const numValue = Number(parsedValue);
+        if (isNaN(numValue)) {
+          toast.error(`quantity must be a number`);
           return;
         }
-        updatedData[fieldName] = numValue;
+        // Allow negatives and zero for quantity
+        updatedData.quantity = numValue;
+      } else if (fieldName === "in_office_stock") {
+        const numValue = Number(parsedValue);
+        if (isNaN(numValue) || numValue < 0) {
+          toast.error(`in_office_stock must be a non-negative number`);
+          return;
+        }
+        updatedData.in_office_stock = numValue;
       }
 
       console.log("📦 Sending update data:", updatedData);
@@ -388,7 +493,8 @@ export function BlazerInventoryTable({
                 <TableRow>
                   <TableHead>Gender</TableHead>
                   <TableHead>Size</TableHead>
-                  <TableHead>Quantity</TableHead>
+                  <TableHead>Added</TableHead>
+                  <TableHead>Sent</TableHead>
                   <TableHead>In Office Stock</TableHead>
                   <TableHead>Remarks</TableHead>
                   <TableHead>Created At</TableHead>
@@ -450,6 +556,7 @@ export function BlazerInventoryTable({
                         </span>
                       )}
                     </TableCell>
+                    {/* Size (moved up to match header order) */}
                     <TableCell className="font-medium">
                       {editingRecord === record.id &&
                       editingField === "size" ? (
@@ -493,21 +600,20 @@ export function BlazerInventoryTable({
                     </TableCell>
                     <TableCell>
                       {editingRecord === record.id &&
-                      editingField === "quantity" ? (
+                      editingField === "added" ? (
                         <div className="flex items-center gap-1">
                           <Input
                             type="number"
                             value={editValue}
-                            onChange={(e) =>
-                              setEditValue(Number(e.target.value))
-                            }
+                            onChange={(e) => setEditValue(e.target.value)}
                             className="w-16"
+                            min={0}
                           />
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() =>
-                              handleFieldSave(record.id, "quantity", editValue)
+                              handleFieldSave(record.id, "added", editValue)
                             }
                             className="h-6 w-6 p-0 text-green-600 hover:text-green-700"
                           >
@@ -528,15 +634,63 @@ export function BlazerInventoryTable({
                           onClick={() =>
                             handleFieldEdit(
                               record.id,
-                              "quantity",
-                              record.quantity
+                              "added",
+                              record.quantity > 0 ? record.quantity : 0
                             )
                           }
                         >
-                          {record.quantity}
+                          {record.quantity > 0 ? record.quantity : 0}
                         </span>
                       )}
                     </TableCell>
+                    <TableCell>
+                      {editingRecord === record.id &&
+                      editingField === "sent" ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            className="w-16"
+                            min={0}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              handleFieldSave(record.id, "sent", editValue)
+                            }
+                            className="h-6 w-6 p-0 text-green-600 hover:text-green-700"
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleFieldCancel}
+                            className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span
+                          className="cursor-pointer hover:underline"
+                          onClick={() =>
+                            handleFieldEdit(
+                              record.id,
+                              "sent",
+                              record.quantity < 0
+                                ? Math.abs(record.quantity)
+                                : 0
+                            )
+                          }
+                        >
+                          {record.quantity < 0 ? Math.abs(record.quantity) : 0}
+                        </span>
+                      )}
+                    </TableCell>
+                    {/* Quantity removed in favor of Added/Sent */}
                     <TableCell>
                       {editingRecord === record.id &&
                       editingField === "in_office_stock" ? (
@@ -544,9 +698,7 @@ export function BlazerInventoryTable({
                           <Input
                             type="number"
                             value={editValue}
-                            onChange={(e) =>
-                              setEditValue(Number(e.target.value))
-                            }
+                            onChange={(e) => setEditValue(e.target.value)}
                             className="w-16"
                           />
                           <Button

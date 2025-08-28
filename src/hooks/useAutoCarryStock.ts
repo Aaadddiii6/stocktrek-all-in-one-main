@@ -36,7 +36,8 @@ export function useAutoCarryStock(
   );
   const [isLoading, setIsLoading] = useState(false);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isProcessingRef = useRef(false); // Prevent infinite loops
+  const isProcessingRef = useRef(false);
+  const latestKeyRef = useRef<string | null>(null);
 
   // 🚀 THE COMPLETE SOLUTION: Create a single, stable trigger value
   const triggerValue = useMemo(() => {
@@ -127,14 +128,10 @@ export function useAutoCarryStock(
     async (
       tableName: string,
       formData: Record<string, any>,
-      triggerValue: string | null
+      triggerValue: string | null,
+      requestKey: string
     ) => {
-      if (isProcessingRef.current) {
-        console.log("🚫 Already processing auto-carry, skipping...");
-        return;
-      }
-
-      isProcessingRef.current = true;
+      latestKeyRef.current = requestKey;
       console.log("🚀 fetchPreviousStock STARTED:", {
         tableName,
         formData,
@@ -187,20 +184,20 @@ export function useAutoCarryStock(
 
           if (latestRecord) {
             const previousOfficeStock = latestRecord.in_office_stock || 0;
-            const previousQuantity = latestRecord.quantity || 0;
-            const calculatedOfficeStock =
-              previousOfficeStock - previousQuantity;
-
+            // For blazer, auto-carry the PREVIOUS stock snapshot.
+            // The form will compute the new post-entry stock based on quantity and transaction type.
             newAutoCarryValues.in_office_stock = Math.max(
               0,
-              calculatedOfficeStock
+              previousOfficeStock
+            );
+            newAutoCarryValues._prev_in_office_stock = Math.max(
+              0,
+              previousOfficeStock
             );
             newAutoCarryValues.quantity = 0; // Reset quantity for new record
 
             console.log("🔍 Auto-carry values calculated:", {
               previousOfficeStock,
-              previousQuantity,
-              calculatedOfficeStock,
               newOfficeStock: newAutoCarryValues.in_office_stock,
             });
           } else {
@@ -363,11 +360,19 @@ export function useAutoCarryStock(
         );
 
         if (Object.keys(filteredAutoCarryValues).length > 0) {
-          setAutoCarryValues(filteredAutoCarryValues);
-          console.log(
-            "✅ Auto-carry values set successfully:",
-            filteredAutoCarryValues
-          );
+          // Last-wins: only apply if this is for the latest key
+          if (latestKeyRef.current === requestKey) {
+            setAutoCarryValues(filteredAutoCarryValues);
+            console.log(
+              "✅ Auto-carry values set successfully:",
+              filteredAutoCarryValues
+            );
+          } else {
+            console.log(
+              "⏭️ Skipping stale auto-carry result for key",
+              requestKey
+            );
+          }
         } else {
           console.log("ℹ️ No auto-carry values to set after filtering");
         }
@@ -375,7 +380,7 @@ export function useAutoCarryStock(
         console.error("❌ Error in fetchPreviousStock:", error);
       } finally {
         console.log("🏁 fetchPreviousStock COMPLETED");
-        isProcessingRef.current = false; // Reset processing flag
+        isProcessingRef.current = false;
       }
     },
     [tableName] // ✅ THE FIX: Only depend on tableName, not empty array
@@ -393,23 +398,13 @@ export function useAutoCarryStock(
       clearTimeout(debounceTimeoutRef.current);
     }
 
-    // For kits, games, and expenses, add debouncing to avoid too many requests
-    if (
-      ["kits_inventory", "games_inventory", "daily_expenses"].includes(
-        tableName
-      )
-    ) {
-      console.log("🔍 Debouncing auto-carry for", tableName, "(300ms delay)");
-      debounceTimeoutRef.current = setTimeout(() => {
-        console.log("🔍 Triggering auto-carry fetch (debounced)");
-        // Pass current values to prevent stale closure issues
-        fetchPreviousStock(tableName, formData, triggerValue);
-      }, 300);
-    } else {
-      // For blazer inventory, trigger immediately
-      console.log("🔍 Triggering auto-carry fetch (immediate)");
-      fetchPreviousStock(tableName, formData, triggerValue);
-    }
+    // Debounce for all modules so rapid gender/size changes don't race
+    const requestKey = `${tableName}:${triggerValue}:${Date.now()}`;
+    console.log("🔍 Debouncing auto-carry for", tableName, "(250ms delay)");
+    debounceTimeoutRef.current = setTimeout(() => {
+      console.log("🔍 Triggering auto-carry fetch (debounced)");
+      fetchPreviousStock(tableName, formData, triggerValue, requestKey);
+    }, 250);
 
     // Cleanup timeout on unmount or when dependencies change
     return () => {

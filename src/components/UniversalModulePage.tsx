@@ -128,16 +128,38 @@ export function UniversalModulePage({ moduleName }: UniversalModulePageProps) {
           ) || 0;
         moduleSpecificStats = { inStock };
       } else if (moduleName === "games_inventory") {
+        // Sum 'Distributed' across all rows (total sent)
         const distributed =
-          data?.reduce((sum, item) => sum + (item.sent || 0), 0) || 0;
-        const stockAvailable =
-          data?.reduce(
-            (sum, item) =>
-              sum +
-              (item.in_stock ??
-                (item.previous_stock + item.adding - item.sent || 0)),
-            0
-          ) || 0;
+          data?.reduce((sum, item) => sum + (Number(item.sent) || 0), 0) || 0;
+
+        // Stock Available should not sum every transaction; use the LATEST row per game
+        const latestByGame = new Map<string, any>();
+        (data || []).forEach((row: any) => {
+          const key = String(row.game_details || "");
+          const existing = latestByGame.get(key);
+          const rowTime = new Date(
+            row.updated_at || row.created_at || 0
+          ).getTime();
+          const exTime = existing
+            ? new Date(
+                existing.updated_at || existing.created_at || 0
+              ).getTime()
+            : -1;
+          if (!existing || rowTime > exTime) {
+            latestByGame.set(key, row);
+          }
+        });
+
+        let stockAvailable = 0;
+        latestByGame.forEach((row) => {
+          const current =
+            row.in_stock ??
+            Number(row.previous_stock || 0) +
+              Number(row.adding || 0) -
+              Number(row.sent || 0);
+          stockAvailable += Number(current) || 0;
+        });
+
         moduleSpecificStats = { distributed, stockAvailable };
       } else if (moduleName === "daily_expenses") {
         // Get current month data

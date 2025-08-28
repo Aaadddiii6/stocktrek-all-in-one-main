@@ -10,9 +10,16 @@ import { Button } from "@/components/ui/button";
 import { ModuleActivityLogs } from "@/components/ModuleActivityLogs";
 import { AddRecordModal } from "@/components/AddRecordModal";
 import { BlazerInventoryTable } from "@/components/BlazerInventoryTable";
-import { HardHat, Plus } from "lucide-react";
+import { HardHat, Plus, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 export default function BlazerInventory() {
   console.log(
@@ -26,6 +33,12 @@ export default function BlazerInventory() {
     inOfficeStock: 0,
     maleBlazers: 0,
     femaleBlazers: 0,
+    sizeBreakdown: [] as Array<{
+      size: string;
+      total: number;
+      male: number;
+      female: number;
+    }>,
   });
 
   const fetchBlazerStats = async () => {
@@ -73,11 +86,52 @@ export default function BlazerInventory() {
         .filter((item) => item.gender === "Female")
         .reduce((sum, item) => sum + (item.in_office_stock || 0), 0);
 
+      // Build size breakdown using blazer_stock.current_stock (kept by DB trigger)
+      const orderedSizes = ["XS", "S", "M", "L", "XL", "XXL"];
+      const breakdownMap = new Map<
+        string,
+        { total: number; male: number; female: number }
+      >();
+
+      try {
+        const { data: stockRows, error: stockError } = await supabase
+          .from("blazer_stock")
+          .select("gender,size,current_stock");
+        if (stockError) throw stockError;
+
+        (stockRows || []).forEach((row: any) => {
+          const letters = (row.size || "")
+            .toString()
+            .replace("F-", "")
+            .replace("M-", "");
+          const prev = breakdownMap.get(letters) || {
+            total: 0,
+            male: 0,
+            female: 0,
+          };
+          const qty = Number(row.current_stock || 0);
+          if (row.gender === "Male") prev.male += qty;
+          else if (row.gender === "Female") prev.female += qty;
+          prev.total += qty;
+          breakdownMap.set(letters, prev);
+        });
+      } catch (e) {
+        console.error("Error fetching blazer_stock for size breakdown:", e);
+      }
+
+      const sizeBreakdown = orderedSizes.map((s) => ({
+        size: s,
+        total: breakdownMap.get(s)?.total || 0,
+        male: breakdownMap.get(s)?.male || 0,
+        female: breakdownMap.get(s)?.female || 0,
+      }));
+
       setStats({
         totalBlazers,
         inOfficeStock,
         maleBlazers,
         femaleBlazers,
+        sizeBreakdown,
       });
     } catch (error) {
       console.error("Error fetching blazer stats:", error);
@@ -121,7 +175,32 @@ export default function BlazerInventory() {
               <CardTitle className="text-sm font-medium">
                 Total Blazers
               </CardTitle>
-              <HardHat className="h-4 w-4 text-muted-foreground" />
+              <div className="flex items-center gap-1">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 px-2">
+                      View by size
+                      <ChevronDown className="ml-1 h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>Blazer stock by size</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {stats.sizeBreakdown.map((b) => (
+                      <div
+                        key={b.size}
+                        className="flex items-center justify-between px-2 py-1 text-sm"
+                      >
+                        <span className="font-medium">{b.size}</span>
+                        <span className="tabular-nums">
+                          {b.total} (M: {b.male}, F: {b.female})
+                        </span>
+                      </div>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <HardHat className="h-4 w-4 text-muted-foreground" />
+              </div>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.totalBlazers}</div>
@@ -175,6 +254,40 @@ export default function BlazerInventory() {
 
         {/* Blazer Records Table */}
         <BlazerInventoryTable onDataChange={fetchBlazerStats} />
+
+        {/* Current Stock by Size (M/F split) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Current Stock by Size</CardTitle>
+            <CardDescription>
+              Live in-office stock from blazer stock (M/F)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th className="py-2">Size</th>
+                    <th className="py-2">Male</th>
+                    <th className="py-2">Female</th>
+                    <th className="py-2">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.sizeBreakdown.map((row) => (
+                    <tr key={row.size} className="border-t">
+                      <td className="py-2 font-medium">{row.size}</td>
+                      <td className="py-2 tabular-nums">{row.male}</td>
+                      <td className="py-2 tabular-nums">{row.female}</td>
+                      <td className="py-2 tabular-nums">{row.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Activity Logs */}
         <ModuleActivityLogs
