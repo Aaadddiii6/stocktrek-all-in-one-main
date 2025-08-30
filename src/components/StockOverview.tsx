@@ -7,7 +7,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Package, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -17,8 +16,6 @@ interface StockSummary {
   kits: any[];
   games: any[];
 }
-
-type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 
 export default function StockOverview() {
   const [stockSummary, setStockSummary] = useState<StockSummary>({
@@ -136,68 +133,6 @@ export default function StockOverview() {
     return blazerLowStock + kitsLowStock + gamesLowStock;
   };
 
-  const getModuleStats = () => {
-    return [
-      {
-        module: "Blazers",
-        totalStock: stockSummary.blazer.reduce(
-          (sum, item) => sum + (item.in_office_stock || 0),
-          0
-        ),
-        totalReceived: stockSummary.blazer.reduce(
-          (sum, item) => sum + (item.quantity || 0),
-          0
-        ),
-        totalDistributed: stockSummary.blazer.reduce((sum, item) => {
-          const distributed = Math.max(
-            0,
-            (item.quantity || 0) - (item.in_office_stock || 0)
-          );
-          return sum + distributed;
-        }, 0),
-        lowStockItems: stockSummary.blazer.filter(
-          (item) => (item.in_office_stock || 0) <= 5
-        ).length,
-      },
-      {
-        module: "Kits",
-        totalStock: stockSummary.kits.reduce(
-          (sum, item) => sum + (item.closing_balance || 0),
-          0
-        ),
-        totalReceived: stockSummary.kits.reduce(
-          (sum, item) => sum + (item.addins || 0),
-          0
-        ),
-        totalDistributed: stockSummary.kits.reduce(
-          (sum, item) => sum + (item.takeouts || 0),
-          0
-        ),
-        lowStockItems: stockSummary.kits.filter(
-          (item) => (item.closing_balance || 0) <= 5
-        ).length,
-      },
-      {
-        module: "Games",
-        totalStock: stockSummary.games.reduce(
-          (sum, item) => sum + (item.in_stock || 0),
-          0
-        ),
-        totalReceived: stockSummary.games.reduce(
-          (sum, item) => sum + (item.adding || 0),
-          0
-        ),
-        totalDistributed: stockSummary.games.reduce(
-          (sum, item) => sum + (item.sent || 0),
-          0
-        ),
-        lowStockItems: stockSummary.games.filter(
-          (item) => (item.in_stock || 0) <= 5
-        ).length,
-      },
-    ];
-  };
-
   if (loading) {
     return (
       <Card>
@@ -267,57 +202,6 @@ export default function StockOverview() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Module-wise Breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {getModuleStats().map((module) => (
-          <Card key={module.module}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">{module.module}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">
-                  Current Stock
-                </span>
-                <Badge
-                  variant={
-                    (module.totalStock <= 0
-                      ? "destructive"
-                      : "default") as BadgeVariant
-                  }
-                >
-                  {module.totalStock}
-                </Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Received</span>
-                <span className="text-sm font-medium text-green-600">
-                  {module.totalReceived}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">
-                  Distributed
-                </span>
-                <span className="text-sm font-medium text-red-600">
-                  {module.totalDistributed}
-                </span>
-              </div>
-              {module.lowStockItems > 0 && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">
-                    Low Stock
-                  </span>
-                  <Badge variant={"destructive" as BadgeVariant}>
-                    {module.lowStockItems}
-                  </Badge>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }

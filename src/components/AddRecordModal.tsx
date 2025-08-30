@@ -109,8 +109,23 @@ const FIELD_CONFIGS = {
     },
   ],
   expenses: [
+    {
+      name: "current_balance",
+      label: "Current Balance",
+      type: "text",
+      required: false,
+      readOnly: true,
+      placeholder: "Shows current available balance from dashboard",
+      className: "bg-muted font-mono text-lg font-semibold text-green-600",
+    },
     { name: "date", label: "Date", type: "date", required: true },
-    { name: "expenses", label: "Expenses", type: "number", required: true },
+    {
+      name: "expenses",
+      label: "Expenses",
+      type: "number",
+      required: false,
+      defaultValue: 0,
+    },
     {
       name: "previous_month_overspend",
       label: "Previous Month Carryover",
@@ -257,6 +272,7 @@ interface AddRecordModalProps {
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
   defaultModuleType?: string;
+  currentBalance?: number;
 }
 
 export function AddRecordModal({
@@ -264,6 +280,7 @@ export function AddRecordModal({
   onOpenChange,
   onSuccess,
   defaultModuleType,
+  currentBalance,
 }: AddRecordModalProps) {
   const { user } = useAuth();
   const [moduleType, setModuleType] = useState<string>("");
@@ -376,10 +393,16 @@ export function AddRecordModal({
         "🔍 Module type changed to kits - initialized with default values (addins: 0, takeouts: 0)"
       );
     } else if (value === "expenses") {
-      // For expenses, fixed amount field is always visible
-      setFormData({});
+      // For expenses, initialize with the passed currentBalance
+      setFormData({
+        current_balance: currentBalance ?? 0,
+        expenses: 0,
+        previous_month_overspend: 0,
+        fixed_amount: 0,
+      });
       console.log(
-        "🔍 Module type changed to expenses - fixed amount field always visible"
+        "🔍 Module type changed to expenses - initialized with current balance:",
+        currentBalance ?? 0
       );
     } else {
       // Don't reset form data completely - preserve user input for other modules
@@ -445,10 +468,25 @@ export function AddRecordModal({
           "🔍 AddRecordModal - Kits form initialized with default values (addins: 0, takeouts: 0)"
         );
       } else if (defaultModuleType === "expenses") {
-        // For expenses, fixed amount field is always visible
-        setFormData({});
+        // For expenses, initialize with default values and use the passed currentBalance
         console.log(
-          "🔍 AddRecordModal - Expenses form initialized - fixed amount field always visible"
+          "🔍 AddRecordModal - currentBalance prop received:",
+          currentBalance
+        );
+        console.log(
+          "🔍 AddRecordModal - typeof currentBalance:",
+          typeof currentBalance
+        );
+
+        setFormData({
+          current_balance: currentBalance ?? 0,
+          expenses: 0,
+          previous_month_overspend: 0,
+          fixed_amount: 0,
+        });
+        console.log(
+          "🔍 AddRecordModal - Expenses form initialized with actual current balance:",
+          currentBalance ?? 0
         );
       } else {
         setFormData({});
@@ -517,6 +555,12 @@ export function AddRecordModal({
         ) {
           updated.current_stock = previous + adding - sent;
         }
+      }
+
+      // Daily expenses auto-calc: live current balance from fixed amount + previous month carryover - expenses
+      if (moduleType === "expenses") {
+        // Remove live calculation - just keep the current balance as passed from props
+        // The balance will be updated after form submission when the dashboard refreshes
       }
 
       console.log(`🔍 Form data after change:`, updated);
@@ -589,6 +633,8 @@ export function AddRecordModal({
         delete insertData.total;
         // Remove opening_balance - it doesn't exist in daily_expenses table
         delete insertData.opening_balance;
+        // Remove current_balance - it's a UI-only computed field
+        delete insertData.current_balance;
         // Remove internal form management fields (no longer needed)
 
         // Log the cleaned data for debugging
@@ -688,6 +734,18 @@ export function AddRecordModal({
         console.log(
           "🔍 Checking for previous_stock:",
           insertData.previous_stock
+        );
+      }
+
+      if (moduleType === "expenses") {
+        // Remove current_balance - it's just for display, not stored in database
+        delete insertData.current_balance;
+
+        // Log the cleaned data for debugging
+        console.log("💰 Expenses data after cleaning:", insertData);
+        console.log(
+          "🔍 Checking for current_balance:",
+          insertData.current_balance
         );
       }
 
@@ -860,10 +918,18 @@ export function AddRecordModal({
 
   const renderField = (field: any) => {
     const value = formData[field.name] || "";
-    // Make all fields editable by default
-    const isDisabled = false;
+    // Make all fields editable by default, except read-only fields
+    const isDisabled = field.readOnly || false;
     const showAutoCarryNote =
       shouldAutoCarry(field.name) && autoCarryValues[field.name] !== undefined;
+
+    // Special handling for current_balance field in expenses
+    let displayValue = value;
+    if (field.name === "current_balance" && moduleType === "expenses") {
+      // Always show the passed currentBalance prop value with proper formatting
+      const balance = currentBalance ?? 0;
+      displayValue = `₹${balance.toFixed(2)}`;
+    }
 
     // Fixed amount field is now always visible for expenses
 
@@ -871,35 +937,62 @@ export function AddRecordModal({
       case "text":
       case "number":
         return (
-          <div key={`${moduleType}-${field.name}`} className="space-y-2">
-            <Label htmlFor={field.name}>
+          <div
+            key={`${moduleType}-${field.name}`}
+            className={`space-y-2 ${
+              field.name === "current_balance"
+                ? "p-4 bg-green-50 border border-green-200 rounded-lg"
+                : ""
+            }`}
+          >
+            <Label
+              htmlFor={field.name}
+              className={
+                field.name === "current_balance"
+                  ? "text-lg font-semibold text-green-700"
+                  : ""
+              }
+            >
               {field.label}{" "}
               {field.required && <span className="text-destructive">*</span>}
             </Label>
-            <Input
-              id={field.name}
-              type={field.type}
-              value={value}
-              onChange={(e) => {
-                const raw = e.target.value;
-                if (field.type === "number") {
-                  // Allow '', '-' while typing; convert to number only when valid
-                  if (raw === "" || raw === "-") {
-                    handleFieldChange(field.name, raw);
+
+            {field.name === "current_balance" && moduleType === "expenses" ? (
+              // Special display for current balance - show formatted value
+              <div className="flex items-center h-10 px-3 py-2 text-lg font-mono font-semibold text-green-600 bg-muted border border-input rounded-md">
+                {displayValue}
+              </div>
+            ) : (
+              <Input
+                id={field.name}
+                type={field.type}
+                value={displayValue}
+                onChange={(e) => {
+                  // Don't allow changes for read-only fields
+                  if (field.readOnly) return;
+
+                  const raw = e.target.value;
+                  if (field.type === "number") {
+                    // Allow '', '-' while typing; convert to number only when valid
+                    if (raw === "" || raw === "-") {
+                      handleFieldChange(field.name, raw);
+                    } else {
+                      handleFieldChange(field.name, Number(raw));
+                    }
                   } else {
-                    handleFieldChange(field.name, Number(raw));
+                    handleFieldChange(field.name, raw);
                   }
-                } else {
-                  handleFieldChange(field.name, raw);
+                }}
+                required={field.required}
+                disabled={
+                  isDisabled ||
+                  (moduleType === "games" && field.name === "current_stock")
                 }
-              }}
-              required={field.required}
-              disabled={
-                isDisabled ||
-                (moduleType === "games" && field.name === "current_stock")
-              }
-              placeholder={field.placeholder}
-            />
+                placeholder={field.placeholder}
+                className={field.className || ""}
+                readOnly={field.readOnly}
+              />
+            )}
             {/* Show helpful text for addins/takeouts fields */}
             {(field.name === "addins" || field.name === "takeouts") &&
               moduleType === "kits" && (
@@ -916,6 +1009,21 @@ export function AddRecordModal({
                   you had money left
                 </p>
               )}
+
+            {/* Show helpful text for current balance field */}
+            {field.name === "current_balance" && moduleType === "expenses" && (
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground"></p>
+                {(() => {
+                  const balance = currentBalance ?? 0;
+                  return balance < 0 ? (
+                    <p className="text-sm text-red-600 font-medium">
+                      ⚠️ You are currently overspending this month
+                    </p>
+                  ) : null;
+                })()}
+              </div>
+            )}
 
             {/* Auto-carry text hidden but functionality preserved */}
             {/* {showAutoCarryNote && (

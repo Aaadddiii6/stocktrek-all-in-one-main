@@ -324,6 +324,7 @@ export default function DailyExpenses() {
         onOpenChange={setIsAddModalOpen}
         onSuccess={handleSuccessfulAdd}
         defaultModuleType="expenses"
+        currentBalance={stats.remainingBalance}
       />
     </>
   );

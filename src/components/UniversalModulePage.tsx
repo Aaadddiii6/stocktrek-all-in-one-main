@@ -444,6 +444,9 @@ export function UniversalModulePage({ moduleName }: UniversalModulePageProps) {
           onOpenChange={setIsAddModalOpen}
           onSuccess={handleSuccessfulAdd}
           defaultModuleType={getModuleType(moduleName)}
+          currentBalance={
+            moduleName === "daily_expenses" ? stats.remainingBalance : undefined
+          }
         />
       )}
     </>

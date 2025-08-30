@@ -107,6 +107,7 @@ export default function DynamicDashboard() {
         open={isAddModalOpen}
         onOpenChange={setIsAddModalOpen}
         onSuccess={() => setIsAddModalOpen(false)}
+        currentBalance={undefined}
       />
     </>
   );
