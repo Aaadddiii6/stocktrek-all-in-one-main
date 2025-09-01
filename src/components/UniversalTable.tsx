@@ -24,6 +24,7 @@ interface UniversalTableProps {
   tableName: string;
   fields: ModuleField[];
   onDataChange: () => void;
+  selectedMonth?: string;
 }
 
 export function UniversalTable({
@@ -31,6 +32,7 @@ export function UniversalTable({
   tableName,
   fields,
   onDataChange,
+  selectedMonth,
 }: UniversalTableProps) {
   const [records, setRecords] = useState<any[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<any[]>([]);
@@ -56,10 +58,19 @@ export function UniversalTable({
         `🔄 Fetching records for ${moduleName} from table: ${tableName}`
       );
       setLoading(true);
-      const { data, error } = await (supabase as any)
+
+      let query = (supabase as any)
         .from(tableName as any)
         .select("*")
         .order("created_at", { ascending: false });
+
+      // Add month filtering for daily expenses
+      if (moduleName === "daily_expenses" && selectedMonth) {
+        query = query.eq("month_year", selectedMonth);
+        console.log(`🔍 Filtering daily expenses by month: ${selectedMonth}`);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error(`❌ Error fetching records for ${moduleName}:`, error);
@@ -77,7 +88,7 @@ export function UniversalTable({
     } finally {
       setLoading(false);
     }
-  }, [tableName, isValidModule, isValidFields, moduleName]);
+  }, [tableName, isValidModule, isValidFields, moduleName, selectedMonth]);
 
   // Real-time updates
   useEffect(() => {
@@ -322,13 +333,42 @@ export function UniversalTable({
 
       console.log(`✅ Record found, proceeding with deletion...`);
 
-      const { error, data, count } = await (supabase as any)
+      // Guard: some legacy rows may have NULL month_year causing DB trigger errors on delete
+      if (tableName === "daily_expenses") {
+        try {
+          let monthYear: string | null = record.month_year || null;
+          if (!monthYear && record.date) {
+            const d = new Date(record.date);
+            if (!Number.isNaN(d.getTime())) {
+              monthYear = d.toISOString().slice(0, 7);
+            }
+          }
+
+          if (monthYear) {
+            console.log("🛠️ Normalizing month_year before delete:", monthYear);
+            await (supabase as any)
+              .from(tableName as any)
+              .update({ month_year: monthYear })
+              .eq("id", record.id);
+          } else {
+            console.warn(
+              "⚠️ Could not compute month_year for record before delete; proceeding anyway"
+            );
+          }
+        } catch (normError) {
+          console.warn(
+            "⚠️ Failed to normalize month_year before delete:",
+            normError
+          );
+        }
+      }
+
+      const { error } = await (supabase as any)
         .from(tableName as any)
         .delete()
-        .eq("id", record.id)
-        .select();
+        .eq("id", record.id);
 
-      console.log(`🗑️ Delete response:`, { error, data, count });
+      console.log(`🗑️ Delete response:`, { error });
 
       if (error) {
         console.error(`❌ Delete error for ${moduleName}:`, error);
@@ -341,18 +381,7 @@ export function UniversalTable({
         throw error;
       }
 
-      // Check if any rows were actually affected
-      if (!data || data.length === 0) {
-        console.warn(
-          `⚠️ Delete operation returned no affected rows for ${moduleName}`
-        );
-        throw new Error("No rows were deleted from the database");
-      }
-
-      console.log(
-        `✅ Delete successful for ${moduleName}, deleted rows:`,
-        data
-      );
+      console.log(`✅ Delete successful for ${moduleName}`);
 
       const recordData: Record<string, any> = {};
       visibleFields.forEach((field) => {

@@ -30,9 +30,13 @@ interface ExpenseRecord {
 
 interface DailyExpensesTableProps {
   onDataChange: () => void;
+  selectedMonth?: string;
 }
 
-export function DailyExpensesTable({ onDataChange }: DailyExpensesTableProps) {
+export function DailyExpensesTable({
+  onDataChange,
+  selectedMonth,
+}: DailyExpensesTableProps) {
   const [records, setRecords] = useState<ExpenseRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<ExpenseRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -43,10 +47,17 @@ export function DailyExpensesTable({ onDataChange }: DailyExpensesTableProps) {
 
   const fetchRecords = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("daily_expenses")
         .select("*")
         .order("created_at", { ascending: false });
+
+      // Filter by selected month if provided
+      if (selectedMonth) {
+        query = query.eq("month_year", selectedMonth);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -62,7 +73,7 @@ export function DailyExpensesTable({ onDataChange }: DailyExpensesTableProps) {
 
   useEffect(() => {
     fetchRecords();
-  }, []);
+  }, [selectedMonth]);
 
   useEffect(() => {
     const filtered = records.filter(
@@ -228,7 +239,18 @@ export function DailyExpensesTable({ onDataChange }: DailyExpensesTableProps) {
     <Card>
       <CardHeader>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <CardTitle>Expense Records</CardTitle>
+          <div>
+            <CardTitle>Expense Records</CardTitle>
+            {selectedMonth && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Showing records for{" "}
+                {new Date(selectedMonth + "-01").toLocaleDateString("en-US", {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </p>
+            )}
+          </div>
           <div className="flex gap-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />

@@ -131,8 +131,10 @@ const FIELD_CONFIGS = {
       label: "Previous Month Carryover",
       type: "number",
       required: false,
+      readOnly: false,
       placeholder:
-        "Amount from previous month (positive = overspend, negative = underspend)",
+        "Enter carryover from previous month (+ or −). Default: 0 (optional)",
+      className: "",
     },
     {
       name: "fixed_amount",
@@ -273,6 +275,8 @@ interface AddRecordModalProps {
   onSuccess: () => void;
   defaultModuleType?: string;
   currentBalance?: number;
+  selectedMonth?: string;
+  previousMonthCarryover?: number;
 }
 
 export function AddRecordModal({
@@ -281,6 +285,8 @@ export function AddRecordModal({
   onSuccess,
   defaultModuleType,
   currentBalance,
+  selectedMonth,
+  previousMonthCarryover,
 }: AddRecordModalProps) {
   const { user } = useAuth();
   const [moduleType, setModuleType] = useState<string>("");
@@ -393,16 +399,18 @@ export function AddRecordModal({
         "🔍 Module type changed to kits - initialized with default values (addins: 0, takeouts: 0)"
       );
     } else if (value === "expenses") {
-      // For expenses, initialize with the passed currentBalance
+      // For expenses, initialize with the passed currentBalance and previous month carryover
       setFormData({
         current_balance: currentBalance ?? 0,
         expenses: 0,
-        previous_month_overspend: 0,
+        previous_month_overspend: previousMonthCarryover ?? 0,
         fixed_amount: 0,
       });
       console.log(
         "🔍 Module type changed to expenses - initialized with current balance:",
-        currentBalance ?? 0
+        currentBalance ?? 0,
+        "and previous month carryover:",
+        previousMonthCarryover ?? 0
       );
     } else {
       // Don't reset form data completely - preserve user input for other modules
@@ -468,25 +476,27 @@ export function AddRecordModal({
           "🔍 AddRecordModal - Kits form initialized with default values (addins: 0, takeouts: 0)"
         );
       } else if (defaultModuleType === "expenses") {
-        // For expenses, initialize with default values and use the passed currentBalance
+        // For expenses, initialize with default values and use the passed currentBalance and carryover
         console.log(
           "🔍 AddRecordModal - currentBalance prop received:",
           currentBalance
         );
         console.log(
-          "🔍 AddRecordModal - typeof currentBalance:",
-          typeof currentBalance
+          "🔍 AddRecordModal - previousMonthCarryover prop received:",
+          previousMonthCarryover
         );
 
         setFormData({
           current_balance: currentBalance ?? 0,
           expenses: 0,
-          previous_month_overspend: 0,
+          previous_month_overspend: previousMonthCarryover ?? 0,
           fixed_amount: 0,
         });
         console.log(
-          "🔍 AddRecordModal - Expenses form initialized with actual current balance:",
-          currentBalance ?? 0
+          "🔍 AddRecordModal - Expenses form initialized with current balance:",
+          currentBalance ?? 0,
+          "and previous month carryover:",
+          previousMonthCarryover ?? 0
         );
       } else {
         setFormData({});
@@ -557,10 +567,16 @@ export function AddRecordModal({
         }
       }
 
-      // Daily expenses auto-calc: live current balance from fixed amount + previous month carryover - expenses
-      if (moduleType === "expenses") {
-        // Remove live calculation - just keep the current balance as passed from props
-        // The balance will be updated after form submission when the dashboard refreshes
+      // Daily expenses: allow negative values for carryover while typing
+      if (
+        moduleType === "expenses" &&
+        fieldName === "previous_month_overspend"
+      ) {
+        const parsed = Number(value);
+        if (value === "" || value === "-" || !Number.isFinite(parsed)) {
+          return updated;
+        }
+        updated.previous_month_overspend = parsed;
       }
 
       console.log(`🔍 Form data after change:`, updated);
@@ -607,7 +623,8 @@ export function AddRecordModal({
       // Prepare data for insertion
       const insertData: Record<string, any> = {
         ...formData,
-        user_id: user.id,
+        // For company balance sheet, we don't need user_id filtering
+        // user_id: user.id, // Removed for company-wide tracking
       };
       console.log("📦 Insert data before processing:", insertData);
 
@@ -635,15 +652,20 @@ export function AddRecordModal({
         delete insertData.opening_balance;
         // Remove current_balance - it's a UI-only computed field
         delete insertData.current_balance;
-        // Remove internal form management fields (no longer needed)
+
+        // Set month_year from selectedMonth prop or current month
+        if (selectedMonth) {
+          insertData.month_year = selectedMonth;
+        } else {
+          insertData.month_year = new Date().toISOString().slice(0, 7);
+        }
 
         // Log the cleaned data for debugging
         console.log("🧹 Daily expenses data after cleaning:", insertData);
-        console.log("🔍 Checking for sr_no:", insertData.sr_no);
-        console.log("🔍 Checking for total:", insertData.total);
+        console.log("🔍 Month year set to:", insertData.month_year);
         console.log(
-          "🔍 Checking for opening_balance:",
-          insertData.opening_balance
+          "🔍 Previous month carryover:",
+          insertData.previous_month_overspend
         );
       }
 
@@ -841,7 +863,7 @@ export function AddRecordModal({
       const { error: activityError } = await supabase
         .from("activity_logs")
         .insert({
-          user_id: user.id,
+          user_id: user.id, // Keep user_id for activity logs to track who made changes
           module_type: tableName,
           data: {
             module_name: moduleDisplayNames[tableName] || tableName,
@@ -993,6 +1015,7 @@ export function AddRecordModal({
                 readOnly={field.readOnly}
               />
             )}
+
             {/* Show helpful text for addins/takeouts fields */}
             {(field.name === "addins" || field.name === "takeouts") &&
               moduleType === "kits" && (
@@ -1005,8 +1028,8 @@ export function AddRecordModal({
             {field.name === "previous_month_overspend" &&
               moduleType === "expenses" && (
                 <p className="text-sm text-muted-foreground">
-                  Enter positive amount if you overspent last month, negative if
-                  you had money left
+                  Positive adds to fixed amount; negative deducts. Optional,
+                  default 0.
                 </p>
               )}
 
