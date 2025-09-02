@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ActivityLogsTable } from "@/components/ActivityLogsTable";
 import { AddRecordModal } from "@/components/AddRecordModal";
-import StockOverview from "@/components/StockOverview";
+
 import { useDynamicModules } from "@/hooks/useDynamicModules";
 import { useDynamicStats } from "@/hooks/useDynamicStats";
 import { TrendingUp, CheckCircle, Plus, Package } from "lucide-react";
@@ -92,9 +92,6 @@ export default function DynamicDashboard() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Stock Overview */}
-        <StockOverview />
 
         {/* Module Cards Section Removed */}
 
