@@ -51,34 +51,40 @@ export type Database = {
       };
       blazer_inventory: {
         Row: {
+          added: number;
           created_at: string | null;
           gender: string | null;
           id: string;
           in_office_stock: number;
           quantity: number;
           remarks: string | null;
+          sent: number;
           size: Database["public"]["Enums"]["blazer_size"] | null;
           updated_at: string | null;
           user_id: string | null;
         };
         Insert: {
+          added?: number;
           created_at?: string | null;
           gender?: string | null;
           id?: string;
           in_office_stock?: number;
           quantity?: number;
           remarks?: string | null;
+          sent?: number;
           size?: Database["public"]["Enums"]["blazer_size"] | null;
           updated_at?: string | null;
           user_id?: string | null;
         };
         Update: {
+          added?: number;
           created_at?: string | null;
           gender?: string | null;
           id?: string;
           in_office_stock?: number;
           quantity?: number;
           remarks?: string | null;
+          sent?: number;
           size?: Database["public"]["Enums"]["blazer_size"] | null;
           updated_at?: string | null;
           user_id?: string | null;

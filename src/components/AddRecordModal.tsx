@@ -187,9 +187,10 @@ const FIELD_CONFIGS = {
     { name: "quantity", label: "Quantity", type: "number", required: true },
     {
       name: "in_office_stock",
-      label: "In Office Stock",
+      label: "Current In-Office Stock",
       type: "number",
-      required: true,
+      required: false,
+      placeholder: "Shows current stock for selected size/gender",
     },
     { name: "remarks", label: "Remarks", type: "textarea" },
   ],
@@ -803,6 +804,35 @@ export function AddRecordModal({
     }
   };
 
+  const fetchBlazerCurrentStock = async (gender: string, size: string) => {
+    try {
+      console.log("🔍 Fetching current blazer stock for:", gender, size);
+
+      const { data, error } = await supabase
+        .from("blazer_inventory")
+        .select("quantity")
+        .eq("gender", gender)
+        .eq("size", size as any);
+
+      if (error) {
+        console.error("❌ Error fetching blazer stock:", error);
+        return 0;
+      }
+
+      // Calculate current stock by summing all quantities for this gender/size
+      const currentStock = (data || []).reduce(
+        (sum, item) => sum + (item.quantity || 0),
+        0
+      );
+
+      console.log("📊 Current stock for", gender, size, ":", currentStock);
+      return currentStock;
+    } catch (error) {
+      console.error("❌ Error fetching blazer current stock:", error);
+      return 0;
+    }
+  };
+
   const fetchKitStockData = async (kitName: string) => {
     try {
       console.log("📦 Fetching kit stock data for:", kitName);
@@ -975,11 +1005,24 @@ export function AddRecordModal({
     setFormData((prevFormData) => {
       console.log("🔄 Before auto-carry update - prev formData:", prevFormData);
 
-      // Merge auto-carry values with existing form data
+      // For blazer module, preserve in_office_stock if it was set by user selection
       const updated = {
         ...prevFormData, // Keep all existing user input (including item_name)
         ...autoCarryValues, // Add the auto-carry values
       };
+
+      // Special handling for blazer: preserve in_office_stock if it was manually set
+      if (
+        moduleType === "blazer" &&
+        prevFormData.in_office_stock !== undefined &&
+        prevFormData.in_office_stock !== null
+      ) {
+        updated.in_office_stock = prevFormData.in_office_stock;
+        console.log(
+          "🔄 Preserving manually set in_office_stock:",
+          prevFormData.in_office_stock
+        );
+      }
 
       console.log("🔄 After auto-carry update - updated formData:", updated);
       console.log("🔄 Form data updated with auto-carry values");
@@ -1118,20 +1161,20 @@ export function AddRecordModal({
         }
       }
 
-      // Blazer auto-calc: compute post-entry in_office_stock from previous stock and quantity
+      // Blazer auto-calc: fetch current stock when gender or size changes
       if (moduleType === "blazer") {
-        const prevStock = Number(
-          updated._prev_in_office_stock ?? updated.in_office_stock ?? 0
-        );
-        const qty = Number(
-          fieldName === "quantity" ? value : updated.quantity ?? 0
-        );
-        const tx = String(updated.transaction_type || "");
-        if (!Number.isNaN(prevStock) && !Number.isNaN(qty) && qty >= 0) {
-          if (tx === "Sent (-)") {
-            updated.in_office_stock = Math.max(0, prevStock - qty);
-          } else if (tx === "Received (+)") {
-            updated.in_office_stock = prevStock + qty;
+        if (fieldName === "gender" || fieldName === "size") {
+          const gender = fieldName === "gender" ? value : updated.gender;
+          const size = fieldName === "size" ? value : updated.size;
+
+          if (gender && size) {
+            console.log("🔍 Fetching current stock for blazer:", gender, size);
+            fetchBlazerCurrentStock(gender, size).then((currentStock) => {
+              setFormData((prev) => ({
+                ...prev,
+                in_office_stock: currentStock,
+              }));
+            });
           }
         }
       }
@@ -1226,15 +1269,25 @@ export function AddRecordModal({
       if (moduleType === "blazer") {
         // Normalize blazer fields
         insertData.gender = insertData.gender || "Male";
-        // Map transaction_type to sign and drop helper fields
-        if (
-          insertData.transaction_type &&
-          insertData._prev_in_office_stock !== undefined
-        ) {
-          // in_office_stock already computed in form change handler
-          delete insertData._prev_in_office_stock;
+
+        // Map transaction_type to quantity with proper sign
+        const qty = Number(insertData.quantity || 0);
+        const tx = String(insertData.transaction_type || "");
+
+        if (tx === "Sent (-)") {
+          insertData.quantity = -qty; // Negative for sent
+          insertData.added = 0; // No added for sent
+          insertData.sent = qty; // Sent amount
+        } else if (tx === "Received (+)") {
+          insertData.quantity = qty; // Positive for received
+          insertData.added = qty; // Added amount
+          insertData.sent = 0; // No sent for received
         }
+
+        // Remove helper fields
         delete insertData.transaction_type;
+        delete insertData.in_office_stock; // This will be calculated by triggers
+        delete insertData._prev_in_office_stock; // Remove auto-carry field
       }
 
       if (moduleType === "expenses") {
@@ -1523,7 +1576,9 @@ export function AddRecordModal({
           .toString()
           .replace("F-", "")
           .replace("M-", "");
-        summary = `Added ${insertData.quantity ?? 0} ${
+        const qty = Math.abs(insertData.quantity ?? 0);
+        const action = (insertData.quantity ?? 0) > 0 ? "Added" : "Sent";
+        summary = `${action} ${qty} ${
           insertData.gender || ""
         } ${displaySize} blazers`;
       } else if (tableName === "daily_expenses") {
@@ -1958,6 +2013,11 @@ export function AddRecordModal({
       displayValue = `₹${balance.toFixed(2)}`;
     }
 
+    // Special handling for in_office_stock field in blazer
+    if (field.name === "in_office_stock" && moduleType === "blazer") {
+      displayValue = value || 0;
+    }
+
     // Fixed amount field is now always visible for expenses
 
     switch (field.type) {
@@ -2050,6 +2110,15 @@ export function AddRecordModal({
                     </p>
                   ) : null;
                 })()}
+              </div>
+            )}
+
+            {/* Show helpful text for in-office stock field */}
+            {field.name === "in_office_stock" && moduleType === "blazer" && (
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">
+                  Current stock available for the selected size and gender
+                </p>
               </div>
             )}
 

@@ -186,6 +186,7 @@ export function useAutoCarryStock(
             const previousOfficeStock = latestRecord.in_office_stock || 0;
             // For blazer, auto-carry the PREVIOUS stock snapshot.
             // The form will compute the new post-entry stock based on quantity and transaction type.
+            // Set in_office_stock to previous stock for new records
             newAutoCarryValues.in_office_stock = Math.max(
               0,
               previousOfficeStock
@@ -344,6 +345,7 @@ export function useAutoCarryStock(
         const fieldsToPreserve = [
           "item_name",
           "expense_category",
+          "in_office_stock", // Preserve in-office stock when it's been set by user selection
           "gender",
           "size",
         ];

@@ -43,63 +43,51 @@ export default function BlazerInventory() {
 
   const fetchBlazerStats = async () => {
     try {
-      const { data, error } = await supabase
-        .from("blazer_inventory")
+      // Use blazer_stock table for accurate current stock levels
+      const { data: stockData, error: stockError } = await supabase
+        .from("blazer_stock")
         .select("*");
 
-      if (error) throw error;
+      if (stockError) throw stockError;
 
-      const blazerData = data as any[];
+      console.log("🔍 Blazer stock data:", stockData);
 
-      // Group by size and gender to get the latest record for each combination
-      const latestInventory = new Map();
+      // If no stock data, try to fetch from blazer_inventory as fallback
+      if (!stockData || stockData.length === 0) {
+        console.log(
+          "🔍 No stock data found, fetching from blazer_inventory..."
+        );
+        const { data: inventoryData, error: inventoryError } = await supabase
+          .from("blazer_inventory")
+          .select("*");
 
-      blazerData.forEach((item) => {
-        const key = `${item.size}-${item.gender}`;
-        // Use updated_at to reflect inline edits immediately
-        if (
-          !latestInventory.has(key) ||
-          new Date(item.updated_at || item.created_at) >
-            new Date(
-              latestInventory.get(key).updated_at ||
-                latestInventory.get(key).created_at
-            )
-        ) {
-          latestInventory.set(key, item);
-        }
-      });
+        if (inventoryError) throw inventoryError;
 
-      // Calculate stats from latest inventory status (not from all transaction quantities)
-      const latestRecords = Array.from(latestInventory.values());
+        console.log("🔍 Blazer inventory data:", inventoryData);
 
-      const totalBlazers = latestRecords.reduce(
-        (sum, item) => sum + (item.in_office_stock || 0),
-        0
-      );
-      const inOfficeStock = totalBlazers; // Same as total blazers since we're showing current inventory
+        // Calculate stats from inventory data using quantity field
+        const totalBlazers = (inventoryData || []).reduce(
+          (sum, item) => sum + (item.quantity || 0),
+          0
+        );
+        const inOfficeStock = totalBlazers;
 
-      const maleBlazers = latestRecords
-        .filter((item) => item.gender === "Male")
-        .reduce((sum, item) => sum + (item.in_office_stock || 0), 0);
+        const maleBlazers = (inventoryData || [])
+          .filter((item) => item.gender === "Male")
+          .reduce((sum, item) => sum + (item.quantity || 0), 0);
 
-      const femaleBlazers = latestRecords
-        .filter((item) => item.gender === "Female")
-        .reduce((sum, item) => sum + (item.in_office_stock || 0), 0);
+        const femaleBlazers = (inventoryData || [])
+          .filter((item) => item.gender === "Female")
+          .reduce((sum, item) => sum + (item.quantity || 0), 0);
 
-      // Build size breakdown using blazer_stock.current_stock (kept by DB trigger)
-      const orderedSizes = ["XS", "S", "M", "L", "XL", "XXL"];
-      const breakdownMap = new Map<
-        string,
-        { total: number; male: number; female: number }
-      >();
+        // Build size breakdown from inventory data
+        const orderedSizes = ["XS", "S", "M", "L", "XL", "XXL"];
+        const breakdownMap = new Map<
+          string,
+          { total: number; male: number; female: number }
+        >();
 
-      try {
-        const { data: stockRows, error: stockError } = await supabase
-          .from("blazer_stock")
-          .select("gender,size,current_stock");
-        if (stockError) throw stockError;
-
-        (stockRows || []).forEach((row: any) => {
+        (inventoryData || []).forEach((row: any) => {
           const letters = (row.size || "")
             .toString()
             .replace("F-", "")
@@ -109,15 +97,68 @@ export default function BlazerInventory() {
             male: 0,
             female: 0,
           };
-          const qty = Number(row.current_stock || 0);
+          const qty = row.quantity || 0;
           if (row.gender === "Male") prev.male += qty;
           else if (row.gender === "Female") prev.female += qty;
           prev.total += qty;
           breakdownMap.set(letters, prev);
         });
-      } catch (e) {
-        console.error("Error fetching blazer_stock for size breakdown:", e);
+
+        const sizeBreakdown = orderedSizes.map((s) => ({
+          size: s,
+          total: breakdownMap.get(s)?.total || 0,
+          male: breakdownMap.get(s)?.male || 0,
+          female: breakdownMap.get(s)?.female || 0,
+        }));
+
+        setStats({
+          totalBlazers,
+          inOfficeStock,
+          maleBlazers,
+          femaleBlazers,
+          sizeBreakdown,
+        });
+        return;
       }
+
+      // Calculate stats from blazer_stock table
+      const totalBlazers = (stockData || []).reduce(
+        (sum, item) => sum + (item.current_stock || 0),
+        0
+      );
+      const inOfficeStock = totalBlazers;
+
+      const maleBlazers = (stockData || [])
+        .filter((item) => item.gender === "Male")
+        .reduce((sum, item) => sum + (item.current_stock || 0), 0);
+
+      const femaleBlazers = (stockData || [])
+        .filter((item) => item.gender === "Female")
+        .reduce((sum, item) => sum + (item.current_stock || 0), 0);
+
+      // Build size breakdown using the stock data we already fetched
+      const orderedSizes = ["XS", "S", "M", "L", "XL", "XXL"];
+      const breakdownMap = new Map<
+        string,
+        { total: number; male: number; female: number }
+      >();
+
+      (stockData || []).forEach((row: any) => {
+        const letters = (row.size || "")
+          .toString()
+          .replace("F-", "")
+          .replace("M-", "");
+        const prev = breakdownMap.get(letters) || {
+          total: 0,
+          male: 0,
+          female: 0,
+        };
+        const qty = Number(row.current_stock || 0);
+        if (row.gender === "Male") prev.male += qty;
+        else if (row.gender === "Female") prev.female += qty;
+        prev.total += qty;
+        breakdownMap.set(letters, prev);
+      });
 
       const sizeBreakdown = orderedSizes.map((s) => ({
         size: s,
