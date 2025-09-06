@@ -107,7 +107,7 @@ export function BlazerInventoryTable({
     setEditingRecord(recordId);
     setEditingField(fieldName);
     // Preserve raw text for numeric fields to allow intermediate '-' while typing
-    if (fieldName === "quantity" || fieldName === "in_office_stock") {
+    if (fieldName === "quantity") {
       setEditValue(String(currentValue ?? ""));
     } else {
       setEditValue(currentValue);
@@ -152,11 +152,7 @@ export function BlazerInventoryTable({
       // Prepare update data
       // Parse numeric strings safely (allow '-', '', etc.)
       let parsedValue: any = newValue;
-      if (
-        fieldName === "added" ||
-        fieldName === "sent" ||
-        fieldName === "in_office_stock"
-      ) {
+      if (fieldName === "added" || fieldName === "sent") {
         if (typeof newValue === "string") {
           if (newValue.trim() === "" || newValue === "-") {
             // Do not save until a valid number; keep editing state
@@ -215,13 +211,6 @@ export function BlazerInventoryTable({
         const currentAdded = originalRecord.added || 0;
         updatedData.quantity = currentAdded - numValue;
         updatedData.added = currentAdded;
-      } else if (fieldName === "in_office_stock") {
-        const numValue = Number(parsedValue);
-        if (isNaN(numValue) || numValue < 0) {
-          toast.error(`in_office_stock must be a non-negative number`);
-          return;
-        }
-        updatedData.in_office_stock = numValue;
       }
 
       console.log("📦 Sending update data:", updatedData);
@@ -449,8 +438,8 @@ export function BlazerInventoryTable({
           </div>
         </div>
         <div className="text-sm text-muted-foreground">
-          Click on any field to edit inline • Click the checkmark to save or X
-          to cancel
+          Click on any Added and Sent fields to edit • Click the checkmark to
+          save or X to cancel
         </div>
       </CardHeader>
       <CardContent>
@@ -578,57 +567,11 @@ export function BlazerInventoryTable({
                         </span>
                       )}
                     </TableCell>
-                    {/* In Office Stock - shows current total for gender/size combination */}
+                    {/* In Office Stock - calculated field, non-editable */}
                     <TableCell>
-                      {editingRecord === record.id &&
-                      editingField === "in_office_stock" ? (
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            className="w-16"
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() =>
-                              handleFieldSave(
-                                record.id,
-                                "in_office_stock",
-                                editValue
-                              )
-                            }
-                            className="h-6 w-6 p-0 text-green-600 hover:text-green-700"
-                          >
-                            <Check className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={handleFieldCancel}
-                            className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <span
-                          className="cursor-pointer hover:underline font-semibold text-blue-600"
-                          onClick={() =>
-                            handleFieldEdit(
-                              record.id,
-                              "in_office_stock",
-                              getCurrentInOfficeStock(
-                                record.gender,
-                                record.size
-                              )
-                            )
-                          }
-                        >
-                          {getCurrentInOfficeStock(record.gender, record.size)}
-                        </span>
-                      )}
+                      <span className="font-semibold text-blue-600">
+                        {getCurrentInOfficeStock(record.gender, record.size)}
+                      </span>
                     </TableCell>
                     <TableCell className="max-w-48 truncate">
                       {editingRecord === record.id &&
